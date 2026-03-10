@@ -1,0 +1,31 @@
+env:
+  layout_name: smallClassic
+  num_ghosts: 2
+  max_steps: 500
+  seed: 42
+  ghost_policy: random
+  invalid_action_mode: raise
+  render_mode: null
+  zoom: 1.0
+  frame_time: 0.15
+  reward:
+    time_penalty: -1.0
+    food: 10.0
+    capsule: 0.0
+    eat_ghost: 200.0
+    win: 500.0
+    lose: -500.0
+    invalid_action: -5.0
+
+train:
+  episodes: 20
+  policy_seed: 123
+
+eval:
+  episodes: 10
+  policy_seed: 321
+
+paths:
+  train_output_dir: results/train
+  eval_output_dir: results/eval
+  model_path: results/train/model.pkl

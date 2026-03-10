@@ -34,6 +34,8 @@ venv/
 results/
 !results/important/
 !results/important/.gitkeep
+# Ignore test smoke artifact if left behind.
+results/important/smoke_cli_play.gif
 runs/
 
 # Temporary
