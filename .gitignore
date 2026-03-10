@@ -1,0 +1,41 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+
+# C extensions
+*.pyd
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+.env
+.env.*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+
+# Experiment outputs (keep a tracked README inside results/ if needed)
+results/
+!results/important/
+!results/important/.gitkeep
+runs/
+
+# Temporary
+*.tmp
+.tmp/
