@@ -38,6 +38,8 @@ class PacmanEnvConfig:
     max_steps: int = 500
     seed: int = 42
     ghost_policy: str = "random"
+    ghost_loop_matrix: list[list[int]] | None = None
+    ghost_loop_direction: str = "clockwise"
     invalid_action_mode: str = "raise"
     render_mode: str | None = None
     zoom: float = 1.0
@@ -80,6 +82,9 @@ class PacmanEnv(gym.Env[dict[str, np.ndarray], int]):
         self._truncated = False
         self._display: Any | None = None
         self._display_initialized = False
+        self._ghost_loop_cycle: list[tuple[int, int]] = []
+        self._ghost_loop_index_by_agent: dict[int, int] = {}
+        self._ghost_loop_coord_to_index: dict[tuple[int, int], int] = {}
         self.seed(self._seed_value)
 
     def seed(self, seed: int | None = None) -> None:
@@ -108,6 +113,7 @@ class PacmanEnv(gym.Env[dict[str, np.ndarray], int]):
         self._step_count = 0
         self._terminated = False
         self._truncated = False
+        self._initialize_ghost_policy_state(state)
 
         if self.render_mode == "human":
             self._reset_human_display()
@@ -151,8 +157,13 @@ class PacmanEnv(gym.Env[dict[str, np.ndarray], int]):
                 ghost_legal_actions = next_state.getLegalActions(ghost_index)
                 if not ghost_legal_actions:
                     continue
-                ghost_action = self._sample_ghost_action(ghost_legal_actions)
+                ghost_action = self._sample_ghost_action(
+                    state=next_state,
+                    ghost_index=ghost_index,
+                    legal_actions=ghost_legal_actions,
+                )
                 next_state = next_state.generateSuccessor(ghost_index, ghost_action)
+                self._sync_loop_index_from_runtime_position(next_state, ghost_index)
                 transition_states.append(next_state)
 
         reward, events = self.compute_reward_from_transition(
@@ -252,12 +263,285 @@ class PacmanEnv(gym.Env[dict[str, np.ndarray], int]):
         """Create a deep-copied runtime game state."""
         return runtime_pacman.GameState(state)
 
-    def _sample_ghost_action(self, legal_actions: list[str]) -> str:
-        """Sample a ghost action using configured stochastic policy."""
-        if self.config.ghost_policy != "random":
-            raise ValueError(f"Unsupported ghost policy '{self.config.ghost_policy}'.")
-        sampled_index = int(self._rng.integers(low=0, high=len(legal_actions)))
-        return legal_actions[sampled_index]
+    def _sample_ghost_action(
+        self,
+        state: runtime_pacman.GameState,
+        ghost_index: int,
+        legal_actions: list[str],
+    ) -> str:
+        """Sample a ghost action using configured policy."""
+        if self.config.ghost_policy == "random":
+            sampled_index = int(self._rng.integers(low=0, high=len(legal_actions)))
+            return legal_actions[sampled_index]
+        if self.config.ghost_policy == "loop_path":
+            return self._sample_loop_path_action(
+                state=state,
+                ghost_index=ghost_index,
+                legal_actions=legal_actions,
+            )
+        raise ValueError(f"Unsupported ghost policy '{self.config.ghost_policy}'.")
+
+    def _initialize_ghost_policy_state(self, state: runtime_pacman.GameState) -> None:
+        """Initialize policy-specific ghost state at episode reset."""
+        self._ghost_loop_cycle = []
+        self._ghost_loop_index_by_agent = {}
+        self._ghost_loop_coord_to_index = {}
+        if self.config.ghost_policy != "loop_path":
+            return
+        self._ghost_loop_cycle = self._build_ghost_loop_cycle()
+        self._ghost_loop_coord_to_index = {
+            coord: idx for idx, coord in enumerate(self._ghost_loop_cycle)
+        }
+        self._ghost_loop_index_by_agent = self._build_initial_loop_indices(state)
+
+    def _build_ghost_loop_cycle(self) -> list[tuple[int, int]]:
+        """Validate and convert configured loop matrix into ordered cycle coordinates."""
+        loop_matrix = self.config.ghost_loop_matrix
+        if loop_matrix is None:
+            raise ValueError("ghost_loop_matrix must be provided when ghost_policy='loop_path'.")
+
+        width = int(self._layout.width)
+        height = int(self._layout.height)
+        if len(loop_matrix) != height:
+            raise ValueError(
+                f"ghost_loop_matrix row count {len(loop_matrix)} does not match layout height {height}."
+            )
+        if any(len(row) != width for row in loop_matrix):
+            raise ValueError("ghost_loop_matrix must have consistent row width equal to layout width.")
+
+        path_cells: set[tuple[int, int]] = set()
+        for row_idx, row in enumerate(loop_matrix):
+            for col_idx, raw_value in enumerate(row):
+                if raw_value not in (0, 1):
+                    raise ValueError("ghost_loop_matrix values must be 0 or 1.")
+                if raw_value == 0:
+                    continue
+                y_coord = height - 1 - row_idx
+                x_coord = col_idx
+                if self._layout.walls[x_coord][y_coord]:
+                    raise ValueError(
+                        f"ghost_loop_matrix marks wall cell as path: (x={x_coord}, y={y_coord})."
+                    )
+                path_cells.add((x_coord, y_coord))
+
+        if not path_cells:
+            raise ValueError("ghost_loop_matrix contains no path cells.")
+
+        component = self._collect_component(path_cells, next(iter(path_cells)))
+        if component != path_cells:
+            raise ValueError("ghost_loop_matrix must form one connected path component.")
+
+        for cell in path_cells:
+            if len(self._path_neighbors(cell, path_cells)) != 2:
+                raise ValueError(
+                    "ghost_loop_matrix must define a closed simple cycle "
+                    "(each path node degree must be exactly 2)."
+                )
+
+        anchor = min(path_cells, key=lambda coord: (-coord[1], coord[0]))
+        neighbors = self._path_neighbors(anchor, path_cells)
+        if len(neighbors) != 2:
+            raise ValueError("Loop anchor must have degree 2.")
+
+        first_cycle = self._walk_cycle(anchor, neighbors[0], path_cells)
+        second_cycle = self._walk_cycle(anchor, neighbors[1], path_cells)
+
+        if self.config.ghost_loop_direction != "clockwise":
+            raise ValueError("Only ghost_loop_direction='clockwise' is currently supported.")
+
+        clockwise_cycle = self._select_clockwise_cycle(first_cycle, second_cycle)
+        return clockwise_cycle
+
+    def _build_initial_loop_indices(self, state: runtime_pacman.GameState) -> dict[int, int]:
+        """Build initial per-ghost loop index mapping with even spacing."""
+        if not self._ghost_loop_cycle:
+            return {}
+        cycle_length = len(self._ghost_loop_cycle)
+        spacing = max(1, cycle_length // max(1, self._ghost_count))
+
+        index_by_agent: dict[int, int] = {}
+        ghost_states = state.getGhostStates()[: self._ghost_count]
+        anchor_index = 0
+        if ghost_states:
+            first_position = ghost_states[0].getPosition()
+            if first_position is not None:
+                anchor_index = self._nearest_cycle_index(first_position)
+        for ghost_offset, ghost_state in enumerate(ghost_states, start=1):
+            del ghost_state
+            index_by_agent[ghost_offset] = int((anchor_index + (ghost_offset - 1) * spacing) % cycle_length)
+        return index_by_agent
+
+    def _sample_loop_path_action(
+        self,
+        state: runtime_pacman.GameState,
+        ghost_index: int,
+        legal_actions: list[str],
+    ) -> str:
+        """Choose deterministic action that advances ghost along configured loop."""
+        if not self._ghost_loop_cycle:
+            raise ValueError("loop_path policy is active but no loop cycle is initialized.")
+
+        current_position = state.getGhostPosition(ghost_index)
+        current_index = self._ghost_loop_index_by_agent.get(ghost_index)
+        if current_index is None:
+            current_index = self._nearest_cycle_index(current_position)
+
+        cycle_length = len(self._ghost_loop_cycle)
+        if current_position in self._ghost_loop_coord_to_index:
+            self._ghost_loop_index_by_agent[ghost_index] = self._ghost_loop_coord_to_index[current_position]
+            target_index = int((self._ghost_loop_index_by_agent[ghost_index] + 1) % cycle_length)
+        else:
+            target_index = int(current_index)
+        target_coord = self._ghost_loop_cycle[target_index]
+
+        intended_direction = self._direction_towards_target(current_position, target_coord)
+        if intended_direction in legal_actions:
+            return intended_direction
+
+        best_action = min(
+            legal_actions,
+            key=lambda direction: (
+                self._distance_after_action(current_position, direction, target_coord),
+                direction,
+            ),
+        )
+        return best_action
+
+    def _sync_loop_index_from_runtime_position(
+        self,
+        state: runtime_pacman.GameState,
+        ghost_index: int,
+    ) -> None:
+        """Synchronize loop index from runtime ghost position after movement."""
+        if self.config.ghost_policy != "loop_path" or not self._ghost_loop_cycle:
+            return
+        ghost_position = state.getGhostPosition(ghost_index)
+        if ghost_position in self._ghost_loop_coord_to_index:
+            self._ghost_loop_index_by_agent[ghost_index] = self._ghost_loop_coord_to_index[ghost_position]
+            return
+        self._ghost_loop_index_by_agent[ghost_index] = self._nearest_cycle_index(ghost_position)
+
+    def _collect_component(
+        self,
+        path_cells: set[tuple[int, int]],
+        start: tuple[int, int],
+    ) -> set[tuple[int, int]]:
+        """Collect connected component in 4-neighborhood for loop validation."""
+        stack = [start]
+        visited: set[tuple[int, int]] = set()
+        while stack:
+            cell = stack.pop()
+            if cell in visited:
+                continue
+            visited.add(cell)
+            for neighbor in self._path_neighbors(cell, path_cells):
+                if neighbor not in visited:
+                    stack.append(neighbor)
+        return visited
+
+    @staticmethod
+    def _path_neighbors(
+        cell: tuple[int, int],
+        path_cells: set[tuple[int, int]],
+    ) -> list[tuple[int, int]]:
+        """Return 4-neighbor path cells for one coordinate."""
+        x_coord, y_coord = cell
+        candidates = [
+            (x_coord + 1, y_coord),
+            (x_coord - 1, y_coord),
+            (x_coord, y_coord + 1),
+            (x_coord, y_coord - 1),
+        ]
+        return [candidate for candidate in candidates if candidate in path_cells]
+
+    def _walk_cycle(
+        self,
+        anchor: tuple[int, int],
+        first_neighbor: tuple[int, int],
+        path_cells: set[tuple[int, int]],
+    ) -> list[tuple[int, int]]:
+        """Walk ordered cycle from anchor using chosen first neighbor."""
+        ordered = [anchor]
+        previous = anchor
+        current = first_neighbor
+        while current != anchor:
+            ordered.append(current)
+            neighbors = self._path_neighbors(current, path_cells)
+            next_candidates = [neighbor for neighbor in neighbors if neighbor != previous]
+            if len(next_candidates) != 1:
+                raise ValueError("Failed to build unique loop ordering from matrix path.")
+            previous, current = current, next_candidates[0]
+            if len(ordered) > len(path_cells) + 1:
+                raise ValueError("Loop ordering exceeded expected path size.")
+        if len(ordered) != len(path_cells):
+            raise ValueError("Loop ordering does not cover all configured path cells.")
+        return ordered
+
+    @staticmethod
+    def _cycle_signed_area(cycle: list[tuple[int, int]]) -> float:
+        """Compute polygon signed area proxy for cycle orientation."""
+        area = 0.0
+        for idx, (x_coord, y_coord) in enumerate(cycle):
+            next_x, next_y = cycle[(idx + 1) % len(cycle)]
+            area += x_coord * next_y - next_x * y_coord
+        return area / 2.0
+
+    def _select_clockwise_cycle(
+        self,
+        cycle_a: list[tuple[int, int]],
+        cycle_b: list[tuple[int, int]],
+    ) -> list[tuple[int, int]]:
+        """Choose clockwise-ordered cycle and keep anchor as first element."""
+        candidate = cycle_a
+        if self._cycle_signed_area(candidate) > 0:
+            candidate = cycle_b
+        anchor = candidate[0]
+        anchor_index = candidate.index(anchor)
+        return candidate[anchor_index:] + candidate[:anchor_index]
+
+    def _nearest_cycle_index(self, position: tuple[float, float]) -> int:
+        """Return nearest loop index to floating-point runtime position."""
+        best_distance = float("inf")
+        best_coord: tuple[int, int] | None = None
+        for coord in self._ghost_loop_cycle:
+            distance = abs(coord[0] - position[0]) + abs(coord[1] - position[1])
+            if distance < best_distance or (distance == best_distance and (best_coord is None or coord < best_coord)):
+                best_distance = distance
+                best_coord = coord
+        if best_coord is None:
+            raise ValueError("Failed to locate nearest loop coordinate.")
+        return self._ghost_loop_coord_to_index[best_coord]
+
+    @staticmethod
+    def _direction_towards_target(
+        source: tuple[float, float],
+        target: tuple[int, int],
+    ) -> str:
+        """Return primary direction from source to target in grid space."""
+        delta_x = target[0] - source[0]
+        delta_y = target[1] - source[1]
+        if abs(delta_x) >= abs(delta_y):
+            if delta_x > 0:
+                return runtime_game.Directions.EAST
+            if delta_x < 0:
+                return runtime_game.Directions.WEST
+        if delta_y > 0:
+            return runtime_game.Directions.NORTH
+        if delta_y < 0:
+            return runtime_game.Directions.SOUTH
+        return runtime_game.Directions.STOP
+
+    @staticmethod
+    def _distance_after_action(
+        source: tuple[float, float],
+        direction: str,
+        target: tuple[int, int],
+    ) -> float:
+        """Compute Manhattan distance to target after taking one action step."""
+        dx, dy = runtime_game.Actions.directionToVector(direction, 1.0)
+        next_x = source[0] + dx
+        next_y = source[1] + dy
+        return abs(target[0] - next_x) + abs(target[1] - next_y)
 
     def _build_observation_space(self) -> spaces.Dict:
         """Build observation space that matches structured dictionary output."""
@@ -415,12 +699,26 @@ def build_env_config(config_dict: dict[str, Any]) -> PacmanEnvConfig:
         lose=float(reward_dict.get("lose", -500.0)),
         invalid_action=float(reward_dict.get("invalid_action", -5.0)),
     )
+    raw_loop_matrix = config_dict.get("ghost_loop_matrix")
+    ghost_loop_matrix: list[list[int]] | None
+    if raw_loop_matrix is None:
+        ghost_loop_matrix = None
+    else:
+        if not isinstance(raw_loop_matrix, list):
+            raise ValueError("ghost_loop_matrix must be a list of rows.")
+        ghost_loop_matrix = []
+        for row in raw_loop_matrix:
+            if not isinstance(row, list):
+                raise ValueError("ghost_loop_matrix rows must be lists.")
+            ghost_loop_matrix.append([int(value) for value in row])
     return PacmanEnvConfig(
         layout_name=str(config_dict.get("layout_name", "smallClassic")),
         num_ghosts=int(config_dict.get("num_ghosts", 2)),
         max_steps=int(config_dict.get("max_steps", 500)),
         seed=int(config_dict.get("seed", 42)),
         ghost_policy=str(config_dict.get("ghost_policy", "random")),
+        ghost_loop_matrix=ghost_loop_matrix,
+        ghost_loop_direction=str(config_dict.get("ghost_loop_direction", "clockwise")),
         invalid_action_mode=str(config_dict.get("invalid_action_mode", "raise")),
         render_mode=config_dict.get("render_mode"),
         zoom=float(config_dict.get("zoom", 1.0)),

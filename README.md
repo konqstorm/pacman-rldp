@@ -42,10 +42,26 @@ For one `step(action)`:
 - Config key: `env.ghost_policy`.
 - Current supported default: `random`.
 - `random` policy means each ghost samples uniformly from its legal actions at its turn.
-- Ghost movement rules are as followes:
+- Ghost movement rules are as follows:
   - ghost cannot choose `Stop` (except edge-case when no alternatives),
   - ghost usually avoids immediate reverse direction unless forced by map topology.
 - Result: transition dynamics are stochastic and reproducible under fixed seed.
+
+### Ghost Strategy (`loop_path`)
+- Set `env.ghost_policy: loop_path` for deterministic ghost patrol.
+- Additional config:
+  - `ghost_loop_matrix`: `0/1` matrix (row-major, top-to-bottom) with `1` for loop cells.
+  - `ghost_loop_direction`: currently `clockwise`.
+- Validation rules:
+  - matrix shape must match layout size,
+  - values must be only `0` or `1`,
+  - all `1` cells must be non-wall cells,
+  - `1` cells must form one closed simple cycle (degree 2 at each path node).
+- Multi-ghost behavior:
+  - all ghosts use the same single loop,
+  - initial loop indices are evenly spaced along that loop.
+- If a ghost spawn is off-loop, it is snapped to nearest loop node for loop indexing.
+- Dynamics are deterministic (independent of RNG) once loop policy is active.
 
 ### What The Agent Observes
 - The environment is **fully observable** in the provided observation dictionary.

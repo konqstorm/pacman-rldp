@@ -1,9 +1,18 @@
 env:
   layout_name: smallClassic
-  num_ghosts: 2
+  num_ghosts: 1
   max_steps: 500
   seed: 42
-  ghost_policy: random
+  ghost_policy: random  # Options: random, loop_path
+  ghost_loop_direction: clockwise
+  ghost_loop_matrix:
+    - [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    - [0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
+    - [0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0]
+    - [0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0]
+    - [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
+    - [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]
+    - [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   invalid_action_mode: raise
   render_mode: null
   zoom: 1.0
