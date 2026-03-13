@@ -2,7 +2,7 @@ env:
   layout_name: smallClassic
   num_ghosts: 1
   max_steps: 500
-  seed: 42
+  seed: 45
   ghost_policy: random  # Options: random, loop_path
   ghost_loop_direction: clockwise
   ghost_loop_matrix:
@@ -17,6 +17,11 @@ env:
   render_mode: null
   zoom: 1.0
   frame_time: 0.15
+  observation:
+    name: raw  # Options: raw, chunked_food, food_bitmask, bitmask_distance_buckets
+    chunk_w: 4
+    chunk_h: 2
+    distance_bucket_size: 2
   reward:
     time_penalty: -1.0
     food: 10.0

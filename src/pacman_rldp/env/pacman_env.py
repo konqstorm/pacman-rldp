@@ -7,13 +7,18 @@ import random
 from typing import Any
 
 import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
 
 from ..third_party.bk import game as runtime_game
 from ..third_party.bk import graphicsDisplay
 from ..third_party.bk import layout as runtime_layout
 from ..third_party.bk import pacman as runtime_pacman
+from .observations import (
+    ObservationConfig,
+    ObservationSpec,
+    build_observation_context,
+    get_observation_spec,
+)
 
 
 @dataclass(frozen=True)
@@ -44,10 +49,11 @@ class PacmanEnvConfig:
     render_mode: str | None = None
     zoom: float = 1.0
     frame_time: float = 0.1
+    observation: ObservationConfig = field(default_factory=ObservationConfig)
     reward: RewardConfig = field(default_factory=RewardConfig)
 
 
-class PacmanEnv(gym.Env[dict[str, np.ndarray], int]):
+class PacmanEnv(gym.Env[dict[str, Any], int]):
     """Gymnasium wrapper around the refactored Pacman runtime."""
 
     metadata = {"render_modes": ["human", "ansi", None], "render_fps": 10}
@@ -60,7 +66,12 @@ class PacmanEnv(gym.Env[dict[str, np.ndarray], int]):
         runtime_game.Directions.STOP,
     )
 
-    def __init__(self, config: PacmanEnvConfig | None = None, render_mode: str | None = None) -> None:
+    def __init__(
+        self,
+        config: PacmanEnvConfig | None = None,
+        render_mode: str | None = None,
+        observation_spec: ObservationSpec | None = None,
+    ) -> None:
         """Initialize the environment with validated config and spaces."""
         super().__init__()
         self.config = config or PacmanEnvConfig()
@@ -71,8 +82,19 @@ class PacmanEnv(gym.Env[dict[str, np.ndarray], int]):
             raise ValueError(f"Unknown layout '{self.config.layout_name}'.")
 
         self._ghost_count = min(self.config.num_ghosts, self._layout.getNumGhosts())
-        self.action_space = spaces.Discrete(len(self._ACTIONS))
-        self.observation_space = self._build_observation_space()
+        self.action_space = gym.spaces.Discrete(len(self._ACTIONS))
+        self._observation_context = build_observation_context(
+            layout=self._layout,
+            ghost_count=self._ghost_count,
+            max_steps=self.config.max_steps,
+            config=self.config.observation,
+        )
+        self._observation_spec = (
+            observation_spec
+            if observation_spec is not None
+            else get_observation_spec(self.config.observation.name)
+        )
+        self.observation_space = self._observation_spec.build_space(self._observation_context)
 
         self._seed_value = self.config.seed
         self._rng = np.random.default_rng(self._seed_value)
@@ -100,7 +122,7 @@ class PacmanEnv(gym.Env[dict[str, np.ndarray], int]):
         *,
         seed: int | None = None,
         options: dict[str, Any] | None = None,
-    ) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Reset the episode and return initial observation and metadata."""
         del options
         if seed is not None:
@@ -119,11 +141,15 @@ class PacmanEnv(gym.Env[dict[str, np.ndarray], int]):
             self._reset_human_display()
             self.render()
 
-        observation = self._build_observation(self._state)
+        observation = self._observation_spec.build_observation(
+            self._observation_context,
+            self._state,
+            self._step_count,
+        )
         info = self._build_info(self._state)
         return observation, info
 
-    def step(self, action: int) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+    def step(self, action: int) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
         """Advance the environment by one Pacman action and one ghost-response phase."""
         if self._state is None:
             raise RuntimeError("Call reset() before step().")
@@ -181,7 +207,11 @@ class PacmanEnv(gym.Env[dict[str, np.ndarray], int]):
             for transition_state in transition_states:
                 self._render_runtime_state(transition_state)
 
-        observation = self._build_observation(self._state)
+        observation = self._observation_spec.build_observation(
+            self._observation_context,
+            self._state,
+            self._step_count,
+        )
         info = self._build_info(self._state)
         info["events"] = events
         info["selected_direction"] = selected_direction
@@ -543,106 +573,6 @@ class PacmanEnv(gym.Env[dict[str, np.ndarray], int]):
         next_y = source[1] + dy
         return abs(target[0] - next_x) + abs(target[1] - next_y)
 
-    def _build_observation_space(self) -> spaces.Dict:
-        """Build observation space that matches structured dictionary output."""
-        width = int(self._layout.width)
-        height = int(self._layout.height)
-        max_coord = float(max(width, height))
-        return spaces.Dict(
-            {
-                "pacman_position": spaces.Box(
-                    low=np.array([-1.0, -1.0], dtype=np.float32),
-                    high=np.array([max_coord, max_coord], dtype=np.float32),
-                    dtype=np.float32,
-                ),
-                "ghost_positions": spaces.Box(
-                    low=-1.0,
-                    high=max_coord,
-                    shape=(self._ghost_count, 2),
-                    dtype=np.float32,
-                ),
-                "ghost_timers": spaces.Box(
-                    low=0,
-                    high=999,
-                    shape=(self._ghost_count,),
-                    dtype=np.int32,
-                ),
-                "ghost_present": spaces.MultiBinary(self._ghost_count),
-                "walls": spaces.Box(
-                    low=0,
-                    high=1,
-                    shape=(width, height),
-                    dtype=np.int8,
-                ),
-                "food": spaces.Box(
-                    low=0,
-                    high=1,
-                    shape=(width, height),
-                    dtype=np.int8,
-                ),
-                "capsules": spaces.Box(
-                    low=0,
-                    high=1,
-                    shape=(width, height),
-                    dtype=np.int8,
-                ),
-                "score": spaces.Box(
-                    low=-1_000_000.0,
-                    high=1_000_000.0,
-                    shape=(1,),
-                    dtype=np.float32,
-                ),
-                "step_count": spaces.Box(
-                    low=0,
-                    high=self.config.max_steps,
-                    shape=(1,),
-                    dtype=np.int32,
-                ),
-            }
-        )
-
-    def _build_observation(self, state: runtime_pacman.GameState) -> dict[str, np.ndarray]:
-        """Create structured observation dictionary from runtime state."""
-        width = int(self._layout.width)
-        height = int(self._layout.height)
-
-        pac_pos = state.getPacmanPosition()
-        pacman_position = np.array([float(pac_pos[0]), float(pac_pos[1])], dtype=np.float32)
-
-        ghost_positions = np.full((self._ghost_count, 2), fill_value=-1.0, dtype=np.float32)
-        ghost_timers = np.zeros((self._ghost_count,), dtype=np.int32)
-        ghost_present = np.zeros((self._ghost_count,), dtype=np.int8)
-
-        for ghost_idx, ghost_state in enumerate(state.getGhostStates()[: self._ghost_count]):
-            ghost_position = ghost_state.getPosition()
-            if ghost_position is None:
-                continue
-            ghost_positions[ghost_idx] = np.array(
-                [float(ghost_position[0]), float(ghost_position[1])],
-                dtype=np.float32,
-            )
-            ghost_timers[ghost_idx] = int(ghost_state.scaredTimer)
-            ghost_present[ghost_idx] = 1
-
-        walls = self._grid_to_binary_array(state.getWalls())
-        food = self._grid_to_binary_array(state.getFood())
-        capsules = np.zeros((width, height), dtype=np.int8)
-        for capsule_x, capsule_y in state.getCapsules():
-            capsules[int(capsule_x), int(capsule_y)] = 1
-
-        observation = {
-            "pacman_position": pacman_position,
-            "ghost_positions": ghost_positions,
-            "ghost_timers": ghost_timers,
-            "ghost_present": ghost_present,
-            "walls": walls,
-            "food": food,
-            "capsules": capsules,
-            "score": np.array([float(state.getScore())], dtype=np.float32),
-            "step_count": np.array([self._step_count], dtype=np.int32),
-        }
-        return observation
-
     def _build_info(self, state: runtime_pacman.GameState) -> dict[str, Any]:
         """Build step metadata that is useful for algorithms and debugging."""
         legal_action_ids = self.legal_action_ids(state)
@@ -655,11 +585,6 @@ class PacmanEnv(gym.Env[dict[str, np.ndarray], int]):
             "step_count": int(self._step_count),
             "seed": int(self._seed_value),
         }
-
-    @staticmethod
-    def _grid_to_binary_array(grid: runtime_game.Grid) -> np.ndarray:
-        """Convert boolean grid object into int8 array."""
-        return np.asarray(grid.data, dtype=np.int8)
 
     def _ensure_human_display(self) -> None:
         """Initialize graphical renderer object on demand."""
@@ -711,6 +636,17 @@ def build_env_config(config_dict: dict[str, Any]) -> PacmanEnvConfig:
             if not isinstance(row, list):
                 raise ValueError("ghost_loop_matrix rows must be lists.")
             ghost_loop_matrix.append([int(value) for value in row])
+    observation_dict = config_dict.get("observation", {})
+    if observation_dict is None:
+        observation_dict = {}
+    if not isinstance(observation_dict, dict):
+        raise ValueError("observation must be a mapping when provided.")
+    observation = ObservationConfig(
+        name=str(observation_dict.get("name", "raw")),
+        chunk_w=int(observation_dict.get("chunk_w", 4)),
+        chunk_h=int(observation_dict.get("chunk_h", 2)),
+        distance_bucket_size=int(observation_dict.get("distance_bucket_size", 2)),
+    )
     return PacmanEnvConfig(
         layout_name=str(config_dict.get("layout_name", "smallClassic")),
         num_ghosts=int(config_dict.get("num_ghosts", 2)),
@@ -723,5 +659,6 @@ def build_env_config(config_dict: dict[str, Any]) -> PacmanEnvConfig:
         render_mode=config_dict.get("render_mode"),
         zoom=float(config_dict.get("zoom", 1.0)),
         frame_time=float(config_dict.get("frame_time", 0.1)),
+        observation=observation,
         reward=reward,
     )

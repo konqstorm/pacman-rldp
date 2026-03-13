@@ -12,7 +12,8 @@ Pacman RLDP is a team project workspace for dynamic programming (DP) and reinfor
 Primary API: `pacman_rldp.env.PacmanEnv` (Gymnasium-style).
 
 ### State Representation (`ObsDict`)
-`reset()` and `step()` return a structured observation dictionary:
+`reset()` and `step()` return a structured observation dictionary.
+Default (`env.observation.name: raw`) fields:
 - `pacman_position`: `(2,)` float32
 - `ghost_positions`: `(num_ghosts, 2)` float32 (`-1` padding for absent slots)
 - `ghost_timers`: `(num_ghosts,)` int32
@@ -22,6 +23,27 @@ Primary API: `pacman_rldp.env.PacmanEnv` (Gymnasium-style).
 - `capsules`: `(width, height)` int8 binary
 - `score`: `(1,)` float32
 - `step_count`: `(1,)` int32
+
+### Observation Registry
+Observation format is configurable through `env.observation.name`:
+- `raw` (default): full grids (`walls/food/capsules`) + agent features.
+- `chunked_food`: chunk-level binary food map + full local maps for Pacman's current chunk.
+- `food_bitmask`: one integer food bitmask over walkable (non-wall) cells.
+- `bitmask_distance_buckets`: `food_bitmask` + bucketized nearest-food/nearest-ghost distances and coarse directions.
+
+Config block (in `configs/default.yaml`):
+```yaml
+env:
+  observation:
+    name: raw
+    chunk_w: 4
+    chunk_h: 2
+    distance_bucket_size: 2
+```
+
+Bitmask encoding rule (deterministic):
+- only non-wall cells are encoded,
+- canonical order is row-major by map rows top-to-bottom, then left-to-right within each row.
 
 ### Action Space
 - `action_space = Discrete(5)`
