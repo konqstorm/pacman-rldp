@@ -148,6 +148,9 @@ def main() -> None:
             render_mode="human",
             zoom=env_cfg.zoom,
             frame_time=env_cfg.frame_time,
+            ghost_policy=env_cfg.ghost_policy,
+            ghost_loop_matrix=env_cfg.ghost_loop_matrix,
+            ghost_loop_direction=env_cfg.ghost_loop_direction,
         )
         print(f"Manual game finished. Final score: {final_score:.2f}")
         if save_gif_enabled:

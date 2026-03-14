@@ -69,6 +69,13 @@ For one `step(action)`:
   - ghost usually avoids immediate reverse direction unless forced by map topology.
 - Result: transition dynamics are stochastic and reproducible under fixed seed.
 
+### Ghost Strategy (`markovian`)
+- Set `env.ghost_policy: markovian` for uniform one-step Markov transitions.
+- At each ghost turn:
+  - all legal non-`Stop` neighbor transitions are sampled with equal probability,
+  - `Stop` transition has probability `0` (unless no move is available).
+- This policy is stochastic and reproducible under fixed seed.
+
 ### Ghost Strategy (`loop_path`)
 - Set `env.ghost_policy: loop_path` for deterministic ghost patrol.
 - Additional config:

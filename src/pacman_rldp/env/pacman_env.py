@@ -180,7 +180,10 @@ class PacmanEnv(gym.Env[dict[str, Any], int]):
             for ghost_index in range(1, next_state.getNumAgents()):
                 if next_state.isWin() or next_state.isLose():
                     break
-                ghost_legal_actions = next_state.getLegalActions(ghost_index)
+                if self.config.ghost_policy == "markovian":
+                    ghost_legal_actions = self._markovian_legal_actions(next_state, ghost_index)
+                else:
+                    ghost_legal_actions = next_state.getLegalActions(ghost_index)
                 if not ghost_legal_actions:
                     continue
                 ghost_action = self._sample_ghost_action(
@@ -188,6 +191,8 @@ class PacmanEnv(gym.Env[dict[str, Any], int]):
                     ghost_index=ghost_index,
                     legal_actions=ghost_legal_actions,
                 )
+                if self.config.ghost_policy == "markovian":
+                    self._prepare_markovian_state_for_action(next_state, ghost_index)
                 next_state = next_state.generateSuccessor(ghost_index, ghost_action)
                 self._sync_loop_index_from_runtime_position(next_state, ghost_index)
                 transition_states.append(next_state)
@@ -303,6 +308,9 @@ class PacmanEnv(gym.Env[dict[str, Any], int]):
         if self.config.ghost_policy == "random":
             sampled_index = int(self._rng.integers(low=0, high=len(legal_actions)))
             return legal_actions[sampled_index]
+        if self.config.ghost_policy == "markovian":
+            del state, ghost_index
+            return self._sample_markovian_action(legal_actions)
         if self.config.ghost_policy == "loop_path":
             return self._sample_loop_path_action(
                 state=state,
@@ -310,6 +318,46 @@ class PacmanEnv(gym.Env[dict[str, Any], int]):
                 legal_actions=legal_actions,
             )
         raise ValueError(f"Unsupported ghost policy '{self.config.ghost_policy}'.")
+
+    def _sample_markovian_action(self, legal_actions: list[str]) -> str:
+        """Sample uniformly over legal neighbor transitions, excluding stationary moves."""
+        move_actions = [
+            direction
+            for direction in legal_actions
+            if direction != runtime_game.Directions.STOP
+        ]
+        if not move_actions:
+            return runtime_game.Directions.STOP
+        sampled_index = int(self._rng.integers(low=0, high=len(move_actions)))
+        return move_actions[sampled_index]
+
+    def _markovian_legal_actions(
+        self,
+        state: runtime_pacman.GameState,
+        ghost_index: int,
+    ) -> list[str]:
+        """Return markovian legal moves based only on current position and walls."""
+        configuration = state.getGhostState(ghost_index).configuration
+        possible_actions = runtime_game.Actions.getPossibleActions(
+            configuration,
+            state.data.layout.walls,
+        )
+        return [
+            action
+            for action in possible_actions
+            if action != runtime_game.Directions.STOP
+        ]
+
+    def _prepare_markovian_state_for_action(
+        self,
+        state: runtime_pacman.GameState,
+        ghost_index: int,
+    ) -> None:
+        """Prepare ghost config so reverse move remains legal under runtime checks."""
+        ghost_state = state.getGhostState(ghost_index)
+        configuration = ghost_state.configuration
+        if configuration.isInteger():
+            configuration.direction = runtime_game.Directions.STOP
 
     def _initialize_ghost_policy_state(self, state: runtime_pacman.GameState) -> None:
         """Initialize policy-specific ghost state at episode reset."""
