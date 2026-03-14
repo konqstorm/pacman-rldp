@@ -1,0 +1,17 @@
+train:
+  agent_type: "sarsa" # или "random"
+  episodes: 3000
+  epsilon_decay: 0.9995
+  epsilon_end: 0.05
+  seed: 42
+  agent_params: # Эти параметры передаются напрямую в __init__ агента
+    alpha: 0.1
+    gamma: 0.99
+    epsilon: 1.0
+    action_size: 5
+paths:
+  train_output_dir: "results/train/sarsa"
+env:
+  observation:
+    name: "bitmask_distance_buckets"
+    distance_bucket_size: 2  

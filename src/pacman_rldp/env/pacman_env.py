@@ -661,4 +661,5 @@ def build_env_config(config_dict: dict[str, Any]) -> PacmanEnvConfig:
         frame_time=float(config_dict.get("frame_time", 0.1)),
         observation=observation,
         reward=reward,
-    )
+    ) 
+ 
