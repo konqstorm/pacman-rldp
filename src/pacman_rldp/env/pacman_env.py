@@ -424,11 +424,16 @@ class PacmanEnv(gym.Env[dict[str, Any], int]):
         first_cycle = self._walk_cycle(anchor, neighbors[0], path_cells)
         second_cycle = self._walk_cycle(anchor, neighbors[1], path_cells)
 
-        if self.config.ghost_loop_direction != "clockwise":
-            raise ValueError("Only ghost_loop_direction='clockwise' is currently supported.")
+        if self.config.ghost_loop_direction not in {"clockwise", "anticlockwise"}:
+            raise ValueError(
+                "ghost_loop_direction must be one of {'clockwise', 'anticlockwise'}."
+            )
 
-        clockwise_cycle = self._select_clockwise_cycle(first_cycle, second_cycle)
-        return clockwise_cycle
+        return self._select_oriented_cycle(
+            cycle_a=first_cycle,
+            cycle_b=second_cycle,
+            direction=self.config.ghost_loop_direction,
+        )
 
     def _build_initial_loop_indices(self, state: runtime_pacman.GameState) -> dict[int, int]:
         """Build initial per-ghost loop index mapping with even spacing."""
@@ -564,15 +569,20 @@ class PacmanEnv(gym.Env[dict[str, Any], int]):
             area += x_coord * next_y - next_x * y_coord
         return area / 2.0
 
-    def _select_clockwise_cycle(
+    def _select_oriented_cycle(
         self,
         cycle_a: list[tuple[int, int]],
         cycle_b: list[tuple[int, int]],
+        direction: str,
     ) -> list[tuple[int, int]]:
-        """Choose clockwise-ordered cycle and keep anchor as first element."""
+        """Choose ordered cycle for requested direction with stable anchor."""
         candidate = cycle_a
-        if self._cycle_signed_area(candidate) > 0:
-            candidate = cycle_b
+        if direction == "clockwise":
+            if self._cycle_signed_area(candidate) > 0:
+                candidate = cycle_b
+        else:
+            if self._cycle_signed_area(candidate) < 0:
+                candidate = cycle_b
         anchor = candidate[0]
         anchor_index = candidate.index(anchor)
         return candidate[anchor_index:] + candidate[:anchor_index]

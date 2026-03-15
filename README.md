@@ -80,7 +80,7 @@ For one `step(action)`:
 - Set `env.ghost_policy: loop_path` for deterministic ghost patrol.
 - Additional config:
   - `ghost_loop_matrix`: `0/1` matrix (row-major, top-to-bottom) with `1` for loop cells.
-  - `ghost_loop_direction`: currently `clockwise`.
+  - `ghost_loop_direction`: `clockwise` or `anticlockwise`.
 - Validation rules:
   - matrix shape must match layout size,
   - values must be only `0` or `1`,

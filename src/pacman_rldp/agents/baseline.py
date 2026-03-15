@@ -25,7 +25,7 @@ _ACTION_TO_DELTA: dict[int, tuple[int, int]] = {
 class BaselineNearestFoodAvoidGhostPolicy(Policy):
     """Policy: chase nearest food, but flee when a ghost is too close."""
 
-    ghost_danger_distance: int = 2
+    ghost_danger_distance: int = 1
 
     def select_action(self, observation: dict[str, np.ndarray], info: dict[str, Any]) -> int:
         """Pick one legal action based on danger-first heuristic logic."""

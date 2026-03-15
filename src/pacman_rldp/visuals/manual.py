@@ -277,9 +277,13 @@ def _build_loop_cycle(
     neighbors = _path_neighbors(anchor, path_cells)
     first_cycle = _walk_cycle(anchor, neighbors[0], path_cells)
     second_cycle = _walk_cycle(anchor, neighbors[1], path_cells)
-    if ghost_loop_direction != "clockwise":
-        raise ValueError("Only ghost_loop_direction='clockwise' is currently supported.")
-    return first_cycle if _cycle_signed_area(first_cycle) <= 0 else second_cycle
+    if ghost_loop_direction not in {"clockwise", "anticlockwise"}:
+        raise ValueError(
+            "ghost_loop_direction must be one of {'clockwise', 'anticlockwise'}."
+        )
+    if ghost_loop_direction == "clockwise":
+        return first_cycle if _cycle_signed_area(first_cycle) <= 0 else second_cycle
+    return first_cycle if _cycle_signed_area(first_cycle) >= 0 else second_cycle
 
 
 def build_manual_ghosts(
