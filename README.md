@@ -149,10 +149,30 @@ python scripts/eval.py --config configs/default.yaml --model results/train/model
 Expected outputs in `results/eval/`:
 - `eval_metrics.json`
 
+Baseline heuristic policy evaluation (`nearest food`, ghost-avoidance for Manhattan `<= 2`):
+```bash
+python scripts/eval.py --config configs/default.yaml --policy baseline
+```
+Baseline protocol defaults:
+- base seed `42`
+- `200` episodes
+- per-episode seed schedule: `42 + i`
+
+Additional metrics in `eval_metrics.json`:
+- `avg_reward`
+- `avg_episode_length`
+- `policy`
+- `base_seed`
+
 ## Manual Play
 Autonomous agent (random baseline) with graphics:
 ```bash
 python scripts/play.py --config configs/default.yaml --render-mode human
+```
+
+Heuristic baseline agent (nearest food + ghost avoidance):
+```bash
+python scripts/play.py --config configs/default.yaml --render-mode human --policy baseline
 ```
 
 Human keyboard mode (Tk):

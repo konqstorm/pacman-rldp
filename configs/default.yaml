@@ -1,9 +1,9 @@
 env:
   layout_name: smallClassic
-  num_ghosts: 1
+  num_ghosts: 2
   max_steps: 500
   seed: 43
-  ghost_policy: markovian  # Options: random, markovian, loop_path
+  ghost_policy: random  # Options: random, markovian, loop_path
   ghost_loop_direction: clockwise
   ghost_loop_matrix:
     - [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -36,6 +36,7 @@ train:
   policy_seed: 123
 
 eval:
+  policy: random  # Options: random, baseline
   episodes: 10
   policy_seed: 321
 
