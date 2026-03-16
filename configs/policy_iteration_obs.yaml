@@ -1,6 +1,6 @@
 env:
   layout_name: smallClassic
-  num_ghosts: 1
+  num_ghosts: 2
   max_steps: 300
   seed: 45
   ghost_policy: random
@@ -10,7 +10,7 @@ env:
   zoom: 1.0
   frame_time: 0.15
   observation:
-    name: compact_pi
+    name: bitmask_distance_buckets
     chunk_w: 4
     chunk_h: 2
     distance_bucket_size: 2
@@ -31,6 +31,7 @@ obs_mdp:
   episodes: 20000
   seed_base: 45
   policy_seed: 123
+  empirical_mdp_path: null
 
 policy_iteration:
   gamma: 0.95

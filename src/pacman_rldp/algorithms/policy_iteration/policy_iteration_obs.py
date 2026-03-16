@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Hashable
+from typing import Callable, Hashable
 
 from .obs_mdp import ObsMDPModel
 
@@ -20,6 +20,7 @@ class PolicyIterationResult:
     policy_iterations: int
     evaluation_sweeps: int
     last_delta: float
+    value_history: list[float]
 
 
 def _expected_return(
@@ -98,6 +99,7 @@ def policy_iteration(
     theta: float = 1e-4,
     max_eval_iters: int = 50,
     max_policy_iters: int = 50,
+    on_iteration: Callable[[int, dict[ObsKey, int], dict[ObsKey, float]], None] | None = None,
 ) -> PolicyIterationResult:
     """Run policy iteration on the empirical observation MDP model."""
     states = model.states()
@@ -115,6 +117,7 @@ def policy_iteration(
     policy_iterations = 0
     evaluation_sweeps_total = 0
     last_delta = 0.0
+    value_history: list[float] = []
 
     for _ in range(max_policy_iters):
         policy_iterations += 1
@@ -128,8 +131,14 @@ def policy_iteration(
             max_iters=max_eval_iters,
         )
         evaluation_sweeps_total += sweeps
+        if values:
+            value_history.append(float(sum(values.values()) / len(values)))
+        else:
+            value_history.append(0.0)
 
         new_policy, _ = policy_improvement(states, actions_by_state, outcomes_cache, values, gamma=gamma)
+        if on_iteration is not None:
+            on_iteration(policy_iterations, new_policy, values)
         if new_policy == policy:
             break
         policy = new_policy
@@ -140,4 +149,5 @@ def policy_iteration(
         policy_iterations=policy_iterations,
         evaluation_sweeps=evaluation_sweeps_total,
         last_delta=last_delta,
+        value_history=value_history,
     )
