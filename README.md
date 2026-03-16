@@ -183,87 +183,181 @@ Additional metrics in `eval_metrics.json`:
 ## Results & Artifacts by Algorithm
 
 ### Baseline
-- Loop-path demo: `results/important/loop2_baseline.gif`
-- Markovian demo: `results/important/markov1_baseline.gif`
-- Random-policy game demo (`game1 == random policy`): `results/important/game1_baseline.gif`
+**Formula**
+
+$$
+d_{\text{ghost}}(s)=\min_g \left\lVert p_{\text{pac}}(s)-p_g(s)\right\rVert_1
+$$
+
+$$
+a_{\text{escape}}^*(s)=\arg\max_{a\in A_{\text{legal}}}\ \min_g \left\lVert p'_{\text{pac}}(s,a)-p_g(s)\right\rVert_1
+$$
+
+$$
+a_{\text{food}}^*(s)=\text{first action on BFS shortest path to nearest food}
+$$
+
+**GIFs / Visual Rollouts**
+
+Loop-path baseline:
+
+![loop2_baseline](results/important/loop2_baseline.gif)
+
+Markovian baseline:
+
+![markov1_baseline](results/important/markov1_baseline.gif)
+
+Random-policy baseline (`game1 == random policy`):
+
+![game1_baseline](results/important/game1_baseline.gif)
+
+**Metrics**
+
+Source: `results/eval/eval_metrics.json` (baseline policy)
+- Episodes: `200` (seed schedule: `42 + i`)
+- Win rate: `0.575`
+- Average reward: `21.535`
+- Average episode length: `69.215`
+- Data representation: **Non-tabular** (rule-based heuristic)
 
 ### Q-learning
-- Rollout video: `results/important/Q_learning.mp4`
-- Training curve: `results/Q_learning_training_curve.jpg`
+**Formula**
+
+$$
+Q(s,a;\mathbf{w})=\mathbf{w}^{\top}\mathbf{f}(s,a)
+$$
+
+$$
+y=
+\begin{cases}
+r, & \text{terminal}\\
+r+\gamma\max_{a'}Q(s',a';\mathbf{w}), & \text{otherwise}
+\end{cases}
+$$
+
+$$
+\delta = y - Q(s,a;\mathbf{w}),\qquad
+w_i \leftarrow w_i + \alpha\,\delta\,f_i(s,a)
+$$
+
+**GIFs / Video / Curves**
+
+Q-learning rollout video:
+
+<video src="results/important/Q_learning.mp4" controls width="720"></video>
+
+Fallback link: [Q_learning.mp4](results/important/Q_learning.mp4)
+
+Q-learning training curve:
+
+![Q_learning_training_curve](results/Q_learning_training_curve.jpg)
+
+**Metrics**
+
+- Quantitative metrics file is not exported as a dedicated JSON artifact in current repo snapshot.
+- Data representation: **Non-tabular** (linear function approximation with feature weights).
 
 ### Value Iteration (food-bitmask empirical VI)
-- Fast/high-return rollout: `results/important/fast_high_return_VI.gif`
-- Best overall rollout (requested `best_overall.gif`, repository file is): `results/important/best_overall_VI.gif`
-- Training reward curve: `results/important/train_bitmask_vi_reward_curve.png`
+**Formula**
+
+$$
+\hat{P}(s'|s,a)=\frac{N(s,a,s')}{N(s,a)}
+$$
+
+$$
+\hat{R}(s,a,s')=\frac{\sum \text{rewards}(s,a,s')}{N(s,a,s')}
+$$
+
+$$
+Q_k(s,a)=\sum_{s'}\hat{P}(s'|s,a)\left[\hat{R}(s,a,s')+\gamma V_{k-1}(s')\right]
+$$
+
+$$
+V_k(s)=\max_a Q_k(s,a),\qquad
+\pi(s)=\arg\max_a Q_k(s,a)
+$$
+
+$$
+\text{residual}_k=\max_s\left|V_k(s)-V_{k-1}(s)\right|
+$$
+
+**GIFs / Curves**
+
+Fast/high-return VI rollout:
+
+![fast_high_return_VI](results/important/fast_high_return_VI.gif)
+
+Best overall VI rollout:
+
+![best_overall_VI](results/important/best_overall_VI.gif)
+
+VI training reward curve:
+
+![train_bitmask_vi_reward_curve](results/important/train_bitmask_vi_reward_curve.png)
+
+**Metrics**
+
+Training source: `results/important/train_bitmask_vi_metrics.json`
+- Collected episodes: `2500`
+- Discovered states: `136415`
+- Transition samples: `217329`
+- VI iterations: `750`
+- Final Bellman residual: `0.0706064815`
+- Collection mean return: `-183.1356`
+
+Evaluation source: `results/important/eval_bitmask_vi_metrics.json`
+- Episodes: `200` (base seed `42`)
+- Win rate: `0.6`
+- Mean return: `31.715`
+- Mean score: `475.915`
+- Mean steps: `138.785`
+- Best episode return: `719.0` (seed `83`)
+- Data representation: **Tabular** over aggregated food-bitmask observation states.
 
 ### SARSA (Future Placeholder)
+**Formula**
+
+$$
+Q(s,a)\leftarrow Q(s,a)+\alpha\left[r+\gamma Q(s',a')-Q(s,a)\right]
+$$
+
+**GIFs / Curves**
+
 - Qualitative artifact (gif/mp4): `TBD`
 - Training curve: `TBD`
+
+**Metrics**
+
 - Metrics summary: `TBD`
+- Data representation: **Tabular** (`q_table` dictionary).
 
 ### Policy Iteration (Future Placeholder)
+**Formula**
+
+$$
+E(s,a)=\sum_o p_o\left[r_o+\gamma\,c_o\,V(s'_o)\right],\qquad
+c_o=1-\max(\text{terminated\_fraction}_o,\text{truncated\_fraction}_o)
+$$
+
+$$
+V(s)\leftarrow E(s,\pi(s))
+\quad\text{until}\quad
+\max_s|V_{\text{new}}(s)-V_{\text{old}}(s)|<\theta
+$$
+
+$$
+\pi_{\text{new}}(s)=\arg\max_a E(s,a)
+$$
+
+**GIFs / Curves**
+
 - Qualitative artifact (gif/mp4): `TBD`
 - Training curve: `TBD`
+
+**Metrics**
+
 - Metrics summary: `TBD`
-
-## Mathematical Formulas Used in Code
-
-### Baseline Heuristic (`src/pacman_rldp/agents/baseline.py`)
-- Danger check with Manhattan distance:
-  - `d_ghost(s) = min_g ||p_pac - p_g||_1`
-  - Escape mode if `d_ghost(s) <= d_threshold`
-- Escape action selection:
-  - `a* = argmax_{a in A_legal} min_g ||p_pac'(a) - p_g||_1`
-- Food chasing (when safe):
-  - choose first action on BFS shortest path to nearest food.
-
-### Q-learning (`scripts/q_learning_agent.py`)
-- Linear approximation:
-  - `Q(s,a) = w^T f(s,a)`
-- TD target:
-  - terminal: `y = r`
-  - non-terminal: `y = r + gamma * max_{a'} Q(s',a')`
-- TD error:
-  - `delta = y - Q(s,a)`
-- Weight update:
-  - `w_i <- w_i + alpha * delta * f_i(s,a)`
-- Action selection:
-  - epsilon-greedy over legal actions.
-
-### Value Iteration (`src/pacman_rldp/algorithms/food_bitmask_value_iteration.py`)
-- Empirical transition probability:
-  - `P_hat(s'|s,a) = N(s,a,s') / N(s,a)`
-- Empirical mean reward per transition:
-  - `R_hat(s,a,s') = SumRewards(s,a,s') / N(s,a,s')`
-- Bellman backup on empirical MDP:
-  - `Q_k(s,a) = sum_{s'} P_hat(s'|s,a) * [R_hat(s,a,s') + gamma * V_{k-1}(s')]`
-  - `V_k(s) = max_a Q_k(s,a)`
-  - `pi(s) = argmax_a Q_k(s,a)` (tie-break by action id in code)
-- Convergence criterion:
-  - `residual_k = max_s |V_k(s) - V_{k-1}(s)|`
-  - stop if `residual_k <= tolerance`.
-
-### SARSA (`src/pacman_rldp/agents/sarsa.py`)
-- On-policy TD update:
-  - `Q(s,a) <- Q(s,a) + alpha * [r + gamma * Q(s',a') - Q(s,a)]`
-
-### Policy Iteration (`src/pacman_rldp/algorithms/policy_iteration/policy_iteration_obs.py`)
-- Expected return for action from empirical outcomes:
-  - `E(s,a) = sum_o p_o * [r_o + gamma * c_o * V(s_o')]`
-  - with continuation factor `c_o = 1 - max(terminated_fraction_o, truncated_fraction_o)`
-- Policy evaluation (iterative):
-  - `V(s) <- E(s, pi(s))` until `max_s |V_new(s)-V_old(s)| < theta`.
-- Policy improvement:
-  - `pi_new(s) = argmax_a E(s,a)`.
-
-## Tabular vs Non-Tabular Methods
-| Method | Implementation | Data Representation |
-|---|---|---|
-| Baseline heuristic | `src/pacman_rldp/agents/baseline.py` | Non-tabular (rule-based) |
-| Q-learning | `scripts/q_learning_agent.py` | Non-tabular (linear function approximation, weights over features) |
-| Value Iteration (food-bitmask empirical) | `src/pacman_rldp/algorithms/food_bitmask_value_iteration.py` | Tabular over aggregated observation states (`value/policy/q` dictionaries) |
-| SARSA | `src/pacman_rldp/agents/sarsa.py` | Tabular (`q_table` dictionary) |
-| Policy Iteration (obs MDP) | `src/pacman_rldp/algorithms/policy_iteration/policy_iteration_obs.py` | Tabular (explicit empirical state-action-outcome model) |
+- Data representation: **Tabular** (explicit empirical state-action-outcome model).
 
 ## Manual Play
 Autonomous agent (random baseline) with graphics:
