@@ -26,7 +26,11 @@ def pick_first_legal_action(info: dict[str, object]) -> int:
     return int(sorted(int(action_id) for action_id in legal_action_ids)[0])
 
 
-def build_loop_env(num_ghosts: int = 1, seed: int = 7) -> PacmanEnv:
+def build_loop_env(
+    num_ghosts: int = 1,
+    seed: int = 7,
+    direction: str = "clockwise",
+) -> PacmanEnv:
     """Construct environment configured for loop_path ghost policy."""
     cfg = PacmanEnvConfig(
         layout_name="smallClassic",
@@ -34,7 +38,7 @@ def build_loop_env(num_ghosts: int = 1, seed: int = 7) -> PacmanEnv:
         seed=seed,
         ghost_policy="loop_path",
         ghost_loop_matrix=perimeter_loop_matrix(),
-        ghost_loop_direction="clockwise",
+        ghost_loop_direction=direction,
     )
     return PacmanEnv(cfg)
 
@@ -107,6 +111,22 @@ def test_loop_policy_snaps_ghost_to_loop_after_step() -> None:
             break
     assert reached_loop is True
     env.close()
+
+
+def test_loop_policy_supports_anticlockwise_cycle_direction() -> None:
+    """Verify anticlockwise cycle is reverse ordering of clockwise cycle."""
+    env_clockwise = build_loop_env(num_ghosts=1, seed=41, direction="clockwise")
+    env_anticlockwise = build_loop_env(num_ghosts=1, seed=41, direction="anticlockwise")
+    env_clockwise.reset(seed=41)
+    env_anticlockwise.reset(seed=41)
+
+    clockwise_cycle = env_clockwise._ghost_loop_cycle
+    anticlockwise_cycle = env_anticlockwise._ghost_loop_cycle
+
+    assert len(clockwise_cycle) == len(anticlockwise_cycle)
+    assert anticlockwise_cycle == [clockwise_cycle[0], *list(reversed(clockwise_cycle[1:]))]
+    env_clockwise.close()
+    env_anticlockwise.close()
 
 
 def test_loop_policy_rejects_wrong_matrix_dimensions() -> None:

@@ -360,7 +360,6 @@ Epsilon decay is applied after each episode:
 epsilon = max(epsilon_end, epsilon * epsilon_decay)
 ```
 
-
 **GIFs / Curves**
 
 - Qualitative artifact (gif/mp4): `TBD`
