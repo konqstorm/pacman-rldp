@@ -1,191 +1,72 @@
-"""Manual and automated gameplay entrypoint."""
+"""Unified play entrypoint for multiple algorithms."""
 
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
-from pathlib import Path
-import sys
 
-from PIL import Image, ImageGrab
-
-
-def _bootstrap_src_path() -> None:
-    """Ensure local src directory is importable without editable install."""
-    project_root = Path(__file__).resolve().parents[1]
-    src_path = project_root / "src"
-    if str(src_path) not in sys.path:
-        sys.path.insert(0, str(src_path))
-
-
-_bootstrap_src_path()
-
-from pacman_rldp.agents import (
-    BaselineNearestFoodAvoidGhostPolicy,
-    KeyboardPolicy,
-    Policy,
-    RandomPolicy,
-)
-from pacman_rldp.env import PacmanEnv, build_env_config
-from pacman_rldp.third_party.bk import graphicsUtils
-from pacman_rldp.visuals import run_keyboard_game
-from pacman_rldp.utils import ensure_directory, load_yaml
+from pacman_rldp.algorithms.policy_iteration.pi_runner import run_pi
+from pacman_rldp.pipelines_food_bitmask_vi import eval_food_bitmask_value_iteration
+from pacman_rldp.pipelines_tabular_q import run_tabular_q
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for play script."""
-    parser = argparse.ArgumentParser(description="Play Pacman in manual or random-agent mode.")
-    parser.add_argument("--config", default="configs/default.yaml", help="Path to YAML config.")
-    parser.add_argument("--manual", action="store_true", help="Enable manual control mode.")
-    parser.add_argument(
-        "--policy",
-        choices=["random", "baseline"],
-        default="random",
-        help="Pacman policy for non-manual mode.",
-    )
-    parser.add_argument("--render-mode", choices=["human", "ansi"], default="human")
-    parser.add_argument("--episodes", type=int, default=1, help="Number of episodes to run.")
-    parser.add_argument("--seed", type=int, default=None, help="Override random seed.")
-    parser.add_argument("--gif-title", default=None, help="Output GIF name (without or with .gif).")
-    parser.add_argument("--no-gif", action="store_true", help="Disable GIF export.")
+    parser = argparse.ArgumentParser(description="Unified play script.")
+    parser.add_argument("algo", choices=["pi", "vi", "q_learning", "sarsa"], help="Algorithm name")
+    parser.add_argument("--config", default=None, help="Path to config file")
+    parser.add_argument("--model", default=None, help="Path to model artifact")
+    parser.add_argument("--render-mode", default="human", help="Render mode")
+    parser.add_argument("--episodes", type=int, default=1, help="Number of episodes")
+    parser.add_argument("--seed", type=int, default=None, help="Base seed")
+    parser.add_argument("--gif-title", default=None, help="GIF title (VI only)")
+    parser.add_argument("--no-gif", action="store_true", help="Disable GIF (VI only)")
     return parser.parse_args()
 
 
-def build_gif_filename(gif_title: str | None) -> str:
-    """Resolve GIF filename from user-provided title or default timestamped name."""
-    if gif_title is None or not gif_title.strip():
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return f"experiment_{stamp}.gif"
-    normalized = gif_title.strip()
-    if not normalized.lower().endswith(".gif"):
-        normalized = f"{normalized}.gif"
-    return normalized
-
-
-def capture_human_frame() -> Image.Image | None:
-    """Capture one frame from the active Tk canvas used by human visualization."""
-    canvas = graphicsUtils._canvas
-    root_window = graphicsUtils._root_window
-    if canvas is None or root_window is None:
-        return None
-
-    root_window.update_idletasks()
-    root_window.update()
-    x0 = int(canvas.winfo_rootx())
-    y0 = int(canvas.winfo_rooty())
-    width = int(canvas.winfo_width())
-    height = int(canvas.winfo_height())
-    if width <= 1 or height <= 1:
-        return None
-    return ImageGrab.grab(bbox=(x0, y0, x0 + width, y0 + height))
-
-
-def save_gif(frames: list[Image.Image], output_path: Path, frame_time: float) -> None:
-    """Persist accumulated frames into an animated GIF file."""
-    if not frames:
-        return
-    duration_ms = max(20, int(frame_time * 1000))
-    frames[0].save(
-        output_path,
-        save_all=True,
-        append_images=frames[1:],
-        optimize=False,
-        duration=duration_ms,
-        loop=0,
-    )
-
-
-def run_env_loop(
-    env: PacmanEnv,
-    policy: Policy,
-    episodes: int,
-    seed: int,
-    save_human_gif_frames: bool,
-) -> list[Image.Image]:
-    """Run policy in environment for a fixed number of episodes."""
-    gif_frames: list[Image.Image] = []
-    for episode_idx in range(episodes):
-        observation, info = env.reset(seed=seed + episode_idx)
-        if save_human_gif_frames:
-            frame = capture_human_frame()
-            if frame is not None:
-                gif_frames.append(frame)
-        print(f"Episode {episode_idx + 1} started.")
-        while True:
-            action = policy.select_action(observation, info)
-            observation, reward, terminated, truncated, info = env.step(action)
-            if save_human_gif_frames:
-                frame = capture_human_frame()
-                if frame is not None:
-                    gif_frames.append(frame)
-            if env.render_mode == "ansi":
-                rendered = env.render()
-                if rendered is not None:
-                    print(rendered)
-                print(f"Reward: {reward:.2f} | Score: {info.get('score', 0.0):.2f}")
-            if terminated or truncated:
-                print(
-                    f"Episode {episode_idx + 1} finished. "
-                    f"win={info.get('is_win', False)} score={info.get('score', 0.0):.2f}"
-                )
-                break
-    return gif_frames
-
-
 def main() -> None:
-    """Execute play script with selected interaction mode."""
     args = parse_args()
-    cfg = load_yaml(args.config)
-    env_cfg_dict = cfg.get("env", {})
 
-    if args.seed is not None:
-        env_cfg_dict = {**env_cfg_dict, "seed": args.seed}
-
-    env_cfg = build_env_config(env_cfg_dict)
-    save_gif_enabled = (not args.no_gif) and (args.render_mode == "human")
-    gif_path: Path | None = None
-    if save_gif_enabled:
-        gif_filename = build_gif_filename(args.gif_title)
-        gif_dir = ensure_directory("results/important")
-        gif_path = gif_dir / gif_filename
-    elif (not args.no_gif) and args.render_mode != "human":
-        print("GIF export is available only for render-mode=human. Skipping GIF save.")
-
-    if args.manual and args.render_mode == "human":
-        final_score = run_keyboard_game(
-            layout_name=env_cfg.layout_name,
-            num_ghosts=env_cfg.num_ghosts,
-            seed=env_cfg.seed,
-            render_mode="human",
-            zoom=env_cfg.zoom,
-            frame_time=env_cfg.frame_time,
-            ghost_policy=env_cfg.ghost_policy,
-            ghost_loop_matrix=env_cfg.ghost_loop_matrix,
-            ghost_loop_direction=env_cfg.ghost_loop_direction,
+    if args.algo == "pi":
+        config = args.config or "configs/policy_iteration_obs.yaml"
+        run_pi(
+            config_path=config,
+            model_path=args.model,
+            render_mode=args.render_mode,
+            episodes=args.episodes,
+            seed=args.seed,
+            gif_title=args.gif_title,
+            no_gif=args.no_gif,
         )
-        print(f"Manual game finished. Final score: {final_score:.2f}")
-        if save_gif_enabled:
-            print("GIF export is not supported for human+manual mode in this script path.")
         return
 
-    env = PacmanEnv(config=env_cfg, render_mode=args.render_mode)
-    if args.manual:
-        policy: Policy = KeyboardPolicy()
-    elif args.policy == "baseline":
-        policy = BaselineNearestFoodAvoidGhostPolicy()
-    else:
-        policy = RandomPolicy(seed=env_cfg.seed)
-    gif_frames = run_env_loop(
-        env=env,
-        policy=policy,
-        episodes=args.episodes,
-        seed=env_cfg.seed,
-        save_human_gif_frames=save_gif_enabled,
-    )
-    env.close()
-    if save_gif_enabled and gif_path is not None:
-        save_gif(gif_frames, gif_path, frame_time=env_cfg.frame_time)
-        print(f"Saved GIF: {gif_path}")
+    if args.algo == "vi":
+        config = args.config or "configs/bitmask_value_iteration.yaml"
+        eval_food_bitmask_value_iteration(
+            config_path=config,
+            model_path=args.model,
+            output_dir=None,
+            episodes=args.episodes,
+            seed=args.seed,
+            render_mode=args.render_mode,
+            gif_title=args.gif_title,
+            no_gif=args.no_gif,
+        )
+        return
+
+    if args.algo in {"q_learning", "sarsa"}:
+        config = args.config or "configs/default.yaml"
+        default_model = (
+            "results/train_q_learning/q_table.pkl" if args.algo == "q_learning" else "results/train_sarsa/q_table.pkl"
+        )
+        run_tabular_q(
+            config_path=config,
+            model_path=args.model or default_model,
+            render_mode=args.render_mode,
+            episodes=args.episodes,
+            seed=args.seed,
+            gif_title=args.gif_title,
+            no_gif=args.no_gif,
+        )
+        return
 
 
 if __name__ == "__main__":

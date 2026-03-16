@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import matplotlib.pyplot as plt
+from PIL import Image, ImageGrab
 
 from .obs_encoding import encode_observation
 from .obs_mdp import ObsMDPModel
@@ -14,6 +16,7 @@ from .policy_iteration_obs import PolicyIterationResult, policy_iteration
 from ...agents import ObsPolicy
 from ...env import PacmanEnv, build_env_config
 from ...logging import configure_logging
+from ...third_party.bk import graphicsUtils
 from ...utils import ensure_directory, load_pickle, load_yaml, save_json, save_pickle
 
 _OBS_DIR_TO_ACTION = {1: 0, 2: 1, 3: 2, 4: 3}
@@ -367,6 +370,8 @@ def run_pi(
     render_mode: str = "human",
     episodes: int = 1,
     seed: int | None = None,
+    gif_title: str | None = None,
+    no_gif: bool = False,
 ) -> None:
     """Run a trained PI policy in the live environment."""
     cfg = load_yaml(config_path)
@@ -386,17 +391,67 @@ def run_pi(
     float_round = int(encoding_cfg.get("float_round", 3))
     policy = ObsPolicy(policy_table, seed=env_cfg.seed, drop_keys=drop_keys, float_round=float_round)
 
+    save_gif_enabled = (not no_gif) and (render_mode == "human")
+    gif_path: Path | None = None
+    if save_gif_enabled:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"pi_run_{stamp}.gif" if not gif_title else (gif_title if gif_title.endswith(".gif") else f"{gif_title}.gif")
+        gif_dir = ensure_directory("results/important")
+        gif_path = gif_dir / filename
+
     env = PacmanEnv(config=env_cfg, render_mode=render_mode)
+    gif_frames: list[Image.Image] = []
 
     for episode_idx in range(episodes):
         observation, info = env.reset(seed=env_cfg.seed + episode_idx)
         total_reward = 0.0
+        if save_gif_enabled:
+            frame = _capture_human_frame()
+            if frame is not None:
+                gif_frames.append(frame)
         while True:
             action = policy.select_action(observation, info)
             observation, reward, terminated, truncated, info = env.step(action)
             total_reward += float(reward)
+            if save_gif_enabled:
+                frame = _capture_human_frame()
+                if frame is not None:
+                    gif_frames.append(frame)
             if terminated or truncated:
                 print(f"Episode {episode_idx + 1} total reward: {total_reward:.2f}")
                 break
 
     env.close()
+    if save_gif_enabled and gif_path is not None:
+        _save_gif(gif_frames, gif_path, frame_time=env_cfg.frame_time)
+        print(f"Saved GIF: {gif_path}")
+
+
+def _capture_human_frame() -> Image.Image | None:
+    canvas = graphicsUtils._canvas
+    root_window = graphicsUtils._root_window
+    if canvas is None or root_window is None:
+        return None
+    root_window.update_idletasks()
+    root_window.update()
+    x0 = int(canvas.winfo_rootx())
+    y0 = int(canvas.winfo_rooty())
+    width = int(canvas.winfo_width())
+    height = int(canvas.winfo_height())
+    if width <= 1 or height <= 1:
+        return None
+    return ImageGrab.grab(bbox=(x0, y0, x0 + width, y0 + height))
+
+
+def _save_gif(frames: list[Image.Image], output_path: Path, frame_time: float) -> None:
+    if not frames:
+        return
+    duration_ms = max(20, int(frame_time * 1000))
+    frames[0].save(
+        output_path,
+        save_all=True,
+        append_images=frames[1:],
+        optimize=False,
+        duration=duration_ms,
+        loop=0,
+    )
