@@ -2,6 +2,38 @@
 
 Pacman RLDP is a team project workspace for dynamic programming (DP) and reinforcement learning experiments on a Pacman runtime.
 
+## Quick Start
+Setup:
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e .
+```
+### Examples
+Run train / eval / visualize:
+```bash
+# Policy Iteration (empirical MDP on observations)
+python scripts/train.py pi --config configs/policy_iteration_obs.yaml
+python scripts/eval.py  pi --config configs/policy_iteration_obs.yaml
+python scripts/play.py  pi --render-mode human
+
+# Value Iteration (food-bitmask)
+python scripts/train.py vi --config configs/bitmask_value_iteration.yaml
+python scripts/eval.py  vi --config configs/bitmask_value_iteration.yaml
+python scripts/play.py  vi --render-mode human
+
+# Q-learning / SARSA
+python scripts/train.py q_learning --config configs/default.yaml --episodes 1000
+python scripts/train.py sarsa      --config configs/default.yaml --episodes 1000
+python scripts/play.py  q_learning --render-mode human
+```
+
+Manual play:
+```bash
+python scripts/play.py manual --config configs/default.yaml --render-mode human
+python scripts/play.py manual --config configs/default.yaml --render-mode ansi
+```
+
 ## Problem Definition
 - Task: control Pacman to collect all food while avoiding ghosts.
 - Agent objective: maximize cumulative episodic return.
@@ -140,45 +172,6 @@ Configured in `configs/default.yaml` under `env.reward`.
 | Lose | `-500.0` |
 | Invalid action | `-5.0` |
 
-## Reproducibility
-## Setup
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e .
-```
-
-## Train (scaffold)
-```bash
-python scripts/train.py --config configs/default.yaml
-```
-Expected outputs in `results/train/`:
-- `model.pkl` (placeholder artifact for DP model integration)
-- `train_metrics.json`
-- `episode_returns.csv`
-- `learning_curve.png`
-
-## Evaluate (scaffold)
-```bash
-python scripts/eval.py --config configs/default.yaml --model results/train/model.pkl
-```
-Expected outputs in `results/eval/`:
-- `eval_metrics.json`
-
-Baseline heuristic policy evaluation (`nearest food`, ghost-avoidance for Manhattan `<= 2`):
-```bash
-python scripts/eval.py --config configs/default.yaml --policy baseline
-```
-Baseline protocol defaults:
-- base seed `42`
-- `200` episodes
-- per-episode seed schedule: `42 + i`
-
-Additional metrics in `eval_metrics.json`:
-- `avg_reward`
-- `avg_episode_length`
-- `policy`
-- `base_seed`
 
 ## Results & Artifacts by Algorithm
 
@@ -250,7 +243,7 @@ Exploration: With probability epsilon, chooses a random legal action.
 
 2) Approximate Q-learning Agent:
 
-Computes Q-value as a weighted sum of features: $Q(s, a) = w^\\top f(s, a)$.
+Computes Q-value as a weighted sum of features: $Q(s, a) = w^\top f(s, a)$.
 
 Policy: For a given state, extracts features for all legal actions, computes Q-values using current weights, and selects the action with the highest Q-value (breaks ties randomly).
 
@@ -440,64 +433,50 @@ epsilon = max(epsilon_end, epsilon * epsilon_decay)
 - Metrics summary: `TBD`
 - Data representation: **Tabular** (`q_table` dictionary).
 
-### Policy Iteration (Future Placeholder)
-**Formula**
+### Policy Iteration (Empirical Observation MDP)
+We build an empirical MDP over aggregated observations and run classic policy iteration.
+
+**Empirical model**
 
 $$
-E(s,a)=\sum_o p_o\left[r_o+\gamma\,c_o\,V(s'_o)\right],\qquad
-c_o=1-\max(\text{terminated\_fraction}_o,\text{truncated\_fraction}_o)
+\hat{P}(s'\mid s,a)=\frac{N(s,a,s')}{N(s,a)},\qquad
+\hat{R}(s,a,s')=\frac{1}{N(s,a,s')}\sum_{i=1}^{N(s,a,s')} r_i
 $$
 
-$$
-V(s)\leftarrow E(s,\pi(s))
-\quad\text{until}\quad
-\max_s|V_{\text{new}}(s)-V_{\text{old}}(s)|<\theta
-$$
+**Policy evaluation**
 
 $$
-\pi_{\text{new}}(s)=\arg\max_a E(s,a)
+V(s)\leftarrow \sum_{s'} \hat{P}(s'\mid s,\pi(s))\,[\hat{R}(s,\pi(s),s')+\gamma V(s')]
+\quad \text{until} \quad
+\max_s |V_{\text{new}}(s)-V_{\text{old}}(s)|<\theta
 $$
 
-**GIFs / Curves**
+**Policy improvement**
 
-- Qualitative artifact (gif/mp4): `TBD`
-- Training curve: `TBD`
+$$
+\pi_{\text{new}}(s)=\arg\max_a \sum_{s'} \hat{P}(s'\mid s,a)\,[\hat{R}(s,a,s')+\gamma V(s')]
+$$
 
-**Metrics**
+**Results**
+- Win rate: **54%**
 
-- Metrics summary: `TBD`
-- Data representation: **Tabular** (explicit empirical state-action-outcome model).
+**Artifacts**
 
-## Manual Play
-Autonomous agent (random baseline) with graphics:
-```bash
-python scripts/play.py --config configs/default.yaml --render-mode human
-```
+![best_pi](results/important/best_pi.gif)
 
-Heuristic baseline agent (nearest food + ghost avoidance):
-```bash
-python scripts/play.py --config configs/default.yaml --render-mode human --policy baseline
-```
+![policy_iteration_curve](results/important/policy_iteration_curve.png)
 
-Human keyboard mode (Tk):
-```bash
-python scripts/play.py --config configs/default.yaml --manual --render-mode human
-```
-Terminal mode (keyboard prompt):
-```bash
-python scripts/play.py --config configs/default.yaml --manual --render-mode ansi
-```
 
 ## GIF Export
-`scripts/play.py` saves GIF only from real human visualization (`--render-mode human`).
+`scripts/play.py` saves GIF from human visualization (`--render-mode human`).
 Output directory: `results/important/`.
 - Custom filename:
 ```bash
-python scripts/play.py --config configs/default.yaml --render-mode human --gif-title my_run
+python scripts/play.py pi --render-mode human --gif-title my_run
 ```
 - Disable GIF export:
 ```bash
-python scripts/play.py --config configs/default.yaml --render-mode human --no-gif
+python scripts/play.py pi --render-mode human --no-gif
 ```
 - Default filename (if `--gif-title` is omitted): `experiment_{local_time}.gif`
 - `--render-mode ansi` does not export GIF.

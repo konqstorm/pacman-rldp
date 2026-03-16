@@ -75,7 +75,7 @@ def main() -> None:
     if args.algo == "manual":
         if (not args.no_gif) or args.gif_title is not None:
             print("GIF export is not supported in manual mode. Ignoring GIF options.")
-            config = args.config or "configs/default.yaml"
+        config = args.config or "configs/default.yaml"
         run_manual(config, args.render_mode, args.episodes, args.seed)
         return
 
