@@ -243,6 +243,7 @@ As large amount of features mentioned above haven't helped with the learning of 
 1) Tabular Q-learning Agent:
 
 Stores Q-values for each unique combination of feature values and action.
+
 Policy: For a given state, computes feature values for all legal actions, looks up Q-values in the table, and selects the action with the highest Q-value (breaks ties randomly).
 
 Exploration: With probability epsilon, chooses a random legal action.
@@ -250,6 +251,7 @@ Exploration: With probability epsilon, chooses a random legal action.
 2) Approximate Q-learning Agent:
 
 Computes Q-value as a weighted sum of features: $Q(s, a) = w^\\top f(s, a)$.
+
 Policy: For a given state, extracts features for all legal actions, computes Q-values using current weights, and selects the action with the highest Q-value (breaks ties randomly).
 
 Exploration: With probability epsilon, chooses a random legal action.
@@ -294,19 +296,6 @@ Use `--render` flag only if you want to see the agent in action.
 
 - Evaluation
 `python scripts/q_obs_learning_agent_copy.py --eval --model q_obs_weights_copy.pkl --episodes 200 --config configs/default.yaml --render`
-
-**GIFs / Video / Curves**
-
-Q-learning rollout video:
-
-<video src="results/important/Q_learning.mp4" controls width="720"></video>
-
-Fallback link: [Q_learning.mp4](results/important/Q_learning.mp4)
-
-Q-learning training curve:
-
-![Q_learning_training_curve](results/Q_learning_training_curve.jpg)
-
 
 ## Tabular Q-learning metrics
 
