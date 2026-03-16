@@ -3,10 +3,44 @@ import pickle
 import argparse
 from pathlib import Path
 import numpy as np
+from PIL import Image, ImageGrab
+import matplotlib.pyplot as plt
 from pacman_rldp.env import PacmanEnv, build_env_config
 from pacman_rldp.utils import load_yaml
 from pacman_rldp.third_party.bk.game import Actions
 from pacman_rldp.third_party.bk.util import Counter, manhattanDistance
+
+# Захват кадра с canvas (аналогично q_obs_learning_agent_copy)
+def capture_human_frame():
+    from pacman_rldp.third_party.bk import graphicsUtils
+    canvas = graphicsUtils._canvas
+    if canvas is None:
+        return None
+    try:
+        canvas.update()
+        x = canvas.winfo_rootx()
+        y = canvas.winfo_rooty()
+        w = canvas.winfo_width()
+        h = canvas.winfo_height()
+        bbox = (x, y, x + w, y + h)
+        img = ImageGrab.grab(bbox)
+        return img
+    except Exception:
+        return None
+
+# Сохранение GIF
+def save_gif(frames, output_path, frame_time):
+    if not frames:
+        return
+    duration_ms = max(20, int(frame_time * 1000))
+    frames[0].save(
+        output_path,
+        save_all=True,
+        append_images=frames[1:],
+        optimize=False,
+        duration=duration_ms,
+        loop=0,
+    )
 
 # Признаковая дискретизация (как в q_obs_learning_agent_copy)
 def feature_key(state, action):
@@ -174,12 +208,17 @@ def main():
     parser.add_argument("--eval", action="store_true", help="Run in evaluation mode")
     parser.add_argument("--model", type=str, default="q_table.pkl", help="Path to save/load model")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for the environment")
+    parser.add_argument("--record", action="store_true", help="Record frames for GIF during evaluation")
+    parser.add_argument("--render", action="store_true", help="Render Pacman window during evaluation")
     args = parser.parse_args()
 
     config_dict = load_yaml(args.config)
     env_config = build_env_config(config_dict)
     if args.seed is not None:
         env_config.seed = args.seed
+    # Включить визуализацию, если render или record
+    if args.render or args.record:
+        env_config.render_mode = "human"
     env = PacmanEnv(env_config)
     agent = QTableAgent()
 
@@ -194,6 +233,7 @@ def main():
         agent.epsilon = 0.0
         wins = 0
         total_score = 0
+        gif_frames = []
         for i in range(args.episodes):
             obs, info = env.reset(seed=(env_config.seed if env_config.seed is not None else 0) + i)
             state = env.runtime_state
@@ -204,6 +244,9 @@ def main():
                 _, _, terminated, truncated, info = env.step(action)
                 state = env.runtime_state
                 done = terminated or truncated
+                if args.record:
+                    frame = capture_human_frame()
+                    if frame: gif_frames.append(frame)
             if info.get("is_win", False):
                 wins += 1
             total_score += info.get("score", 0)
@@ -211,6 +254,12 @@ def main():
                 print(f"Episode {i+1}: win={info.get('is_win', False)}, score={info.get('score', 0)}")
         print(f"Win rate: {wins / args.episodes:.3f}, Avg score: {total_score / args.episodes:.2f}")
         print("Evaluation finished.")
+        if args.record and gif_frames:
+            Path("results/important").mkdir(parents=True, exist_ok=True)
+            output_path = Path("results/important/q_table_learn.gif")
+            frame_time = getattr(env_config, "frame_time", 0.1)
+            save_gif(gif_frames, output_path, frame_time)
+            print(f"GIF saved to {output_path}")
     env.close()
 
 if __name__ == "__main__":
