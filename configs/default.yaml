@@ -2,15 +2,11 @@ env:
   layout_name: smallClassic
   num_ghosts: 2
   max_steps: 500
-<<<<<<< HEAD
+
   seed: 55
   ghost_policy: random  # Options: random, loop_path
   ghost_loop_direction: clockwise
-=======
-  seed: 44
-  ghost_policy: random  # Options: random, markovian, loop_path
-  ghost_loop_direction: clockwise  # Options: clockwise, anticlockwise
->>>>>>> d4914d81c5c21639526641a1c9a48b380e001e7e
+
   ghost_loop_matrix:
     - [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     - [0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0]
