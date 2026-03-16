@@ -319,12 +319,13 @@ from .base import BaseAgent
 import ast
 import random
 from pathlib import Path
+import random
 
 import numpy as np
 import yaml
 
 from .base import BaseAgent
-
+from pacman_rldp.third_party.bk.util import Counter
 
 class SarsaAgent(BaseAgent):
     def __init__(self, alpha=0.1, gamma=0.99, epsilon=0.1, action_size=5):
@@ -333,6 +334,7 @@ class SarsaAgent(BaseAgent):
         self.epsilon = epsilon
         self.action_size = action_size
         self.q_table = {}
+        self.weights = Counter()
         self._rng = random.Random()
 
     def _get_ghost_features(self, observation: dict) -> tuple:
@@ -350,35 +352,47 @@ class SarsaAgent(BaseAgent):
             ghost_features.append((direction, bucket, scared))
         ghost_features.sort(key=lambda x: (x[2], x[1]))
         return tuple(ghost_features)
-
+    
     def _get_state_key(self, observation: dict[str, np.ndarray]) -> tuple:
-        pac_pos = tuple(observation["pacman_position"].astype(int))
+        pac_pos   = tuple(observation["pacman_position"].astype(int))
         ghost_key = self._get_ghost_features(observation)
 
         if "nearest_food_bucket" in observation:
-            # Ветка BITMASK_DISTANCE_BUCKETS:
-            # готовые признаки из observation_spec — не пересчитываем вручную
-            food_dir    = int(observation["nearest_food_direction"][0])
-            food_bucket = int(observation["nearest_food_bucket"][0])
-            # food_bitmask не используем напрямую — 2^50 уникальных значений
-            # считаем количество единичных битов как число оставшейся еды
-            food_count  = bin(int(observation["food_bitmask"])).count("1")
+            # BITMASK_DISTANCE_BUCKETS
+            food_dir          = int(observation["nearest_food_direction"][0])
+            food_bucket       = int(observation["nearest_food_bucket"][0])
+            food_count        = bin(int(observation["food_bitmask"])).count("1")
             food_count_bucket = 0 if food_count <= 3 else (1 if food_count <= 10 else 2)
             return (pac_pos, ghost_key, food_dir, food_bucket, food_count_bucket)
 
-        # Ветка RAW observation
-        pac_arr = observation["pacman_position"]
+        if "chunk_food_presence" in observation:
+            # CHUNKED_FOOD: используем координату чанка пакмана и наличие еды в нём
+            chunk_coord  = tuple(observation["pacman_chunk_coord"])
+            local_food   = int(observation["pacman_chunk_food"].any())
+            presence     = observation["chunk_food_presence"]
+            total_chunks = int(presence.sum())
+            chunk_count_bucket = 0 if total_chunks <= 1 else (1 if total_chunks <= 4 else 2)
+            return (pac_pos, ghost_key, chunk_coord, local_food, chunk_count_bucket)
+
+        if "food_bitmask" in observation:
+            # FOOD_BITMASK
+            food_count        = bin(int(observation["food_bitmask"])).count("1")
+            food_count_bucket = 0 if food_count <= 3 else (1 if food_count <= 10 else 2)
+            return (pac_pos, ghost_key, food_count_bucket)
+
+        # RAW
+        pac_arr      = observation["pacman_position"]
         food_indices = np.argwhere(observation["food"] == 1)
         if len(food_indices) > 0:
-            diffs = food_indices - pac_arr.astype(int)
-            distances = np.abs(diffs).sum(axis=1)
-            closest = diffs[np.argmin(distances)]
-            food_dir = (int(np.sign(closest[0])), int(np.sign(closest[1])))
-            dist_val = int(distances.min())
+            diffs       = food_indices - pac_arr.astype(int)
+            distances   = np.abs(diffs).sum(axis=1)
+            closest     = diffs[np.argmin(distances)]
+            food_dir    = (int(np.sign(closest[0])), int(np.sign(closest[1])))
+            dist_val    = int(distances.min())
             food_bucket = 0 if dist_val <= 2 else (1 if dist_val <= 5 else 2)
         else:
             food_dir, food_bucket = (0, 0), 3
-        food_count = int(np.sum(observation["food"]))
+        food_count        = int(np.sum(observation["food"]))
         food_count_bucket = 0 if food_count <= 3 else (1 if food_count <= 10 else 2)
         return (pac_pos, ghost_key, food_dir, food_bucket, food_count_bucket)
 

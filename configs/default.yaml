@@ -1,8 +1,8 @@
 env:
   layout_name: smallClassic
-  num_ghosts: 1
+  num_ghosts: 2
   max_steps: 500
-  seed: 45
+  seed: 55
   ghost_policy: random  # Options: random, loop_path
   ghost_loop_direction: clockwise
   ghost_loop_matrix:
@@ -18,14 +18,14 @@ env:
   zoom: 1.0
   frame_time: 0.15
   observation:
-    name: raw  # Options: raw, chunked_food, food_bitmask, bitmask_distance_buckets
+    name: bitmask_distance_buckets  # Options: raw, chunked_food, food_bitmask, bitmask_distance_buckets
     chunk_w: 4
     chunk_h: 2
     distance_bucket_size: 2
   reward:
-    time_penalty: -1.0
-    food: 10.0
-    capsule: 0.0
+    time_penalty: -2.0
+    food: 50.0
+    capsule: 60.0
     eat_ghost: 200.0
     win: 500.0
     lose: -500.0

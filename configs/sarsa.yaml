@@ -13,5 +13,5 @@ paths:
   train_output_dir: "results/train/sarsa"
 env:
   observation:
-    name: "bitmask_distance_buckets"
+    name: "food_bitmask" # Options: raw, chunked_food, food_bitmask, bitmask_distance_buckets
     distance_bucket_size: 2  
