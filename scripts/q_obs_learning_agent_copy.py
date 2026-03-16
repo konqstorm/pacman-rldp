@@ -243,15 +243,15 @@ def train(env, agent, episodes):
         if (i + 1) % 100 == 0:
             avg_reward = np.mean(rewards_history[-100:])
             print(f"Episode {i+1}/{episodes}, Avg Reward: {avg_reward:.2f}, Weights: {dict(agent.weights)}")
-    # Сохраняем график обучения
+    # Сохраняем график обучения по total_reward
     Path("results/important").mkdir(parents=True, exist_ok=True)
     plt.figure(figsize=(10, 5))
     window = 200
-    avg_scores = [np.mean(scores_history[max(0, i-window):i+1]) for i in range(len(scores_history))]
-    plt.plot(avg_scores, label="Avg Pacman score (window=200)")
+    avg_rewards = [np.mean(rewards_history[max(0, i-window):i+1]) for i in range(len(rewards_history))]
+    plt.plot(avg_rewards, label="Avg total reward (window=200)")
     plt.xlabel("Episode")
-    plt.ylabel("Score")
-    plt.title("Q-Learning Pacman Training Score (Moving Average)")
+    plt.ylabel("Total Reward")
+    plt.title("Q-Learning Pacman Training Total Reward (Moving Average)")
     plt.legend()
     plt.grid(True)
     plt.savefig("results/important/q_learn.png")
