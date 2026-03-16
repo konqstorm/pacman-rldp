@@ -45,6 +45,22 @@ Bitmask encoding rule (deterministic):
 - only non-wall cells are encoded,
 - canonical order is row-major by map rows top-to-bottom, then left-to-right within each row.
 
+### Observation State Space (Approximate)
+Approximate orders below use current default assumptions: `smallClassic`, width `20`, height `7`, walkable cells `64`, ghosts `2`, chunk config `4x2`, max scared timer `40`, max steps `500`.
+
+| Observation | Approximate State Space | Formula (order-level) |
+|---|---:|---|
+| `raw` | `~1.63e31` | `N_pac * N_ghost^G * 2^N_food * 2^N_caps * (T+1)^G * (S+1)` |
+| `chunked_food` | `~3.03e23` | `N_pac * N_ghost^G * (T+1)^G * (S+1) * 2^C * C * 2^(chunk_w*chunk_h) * 2^(chunk_w*chunk_h)` |
+| `food_bitmask` | `~4.07e30` | `N_pac * N_ghost^G * 2^N_food * (T+1)^G * (S+1)` |
+| `bitmask_distance_buckets` | `~2.61e34` | `food_bitmask_space * N_food_bucket * N_ghost_bucket * N_food_dir * N_ghost_dir` |
+
+Where:
+- `N_pac = 64`, `N_ghost = 64`, `G = 2`, `N_food = 64`, `N_caps = 2`,
+- `T = 40`, `S = 500`, `C = ceil(20/4)*ceil(7/2)=20`,
+- `N_food_bucket = 16`, `N_ghost_bucket = 16`, `N_food_dir = 5`, `N_ghost_dir = 5`.
+- These are approximate upper-order estimates and change with layout/config.
+
 ### Action Space
 - `action_space = Discrete(5)`
 - Mapping:
@@ -69,11 +85,18 @@ For one `step(action)`:
   - ghost usually avoids immediate reverse direction unless forced by map topology.
 - Result: transition dynamics are stochastic and reproducible under fixed seed.
 
+### Ghost Strategy (`markovian`)
+- Set `env.ghost_policy: markovian` for uniform one-step Markov transitions.
+- At each ghost turn:
+  - all legal non-`Stop` neighbor transitions are sampled with equal probability,
+  - `Stop` transition has probability `0` (unless no move is available).
+- This policy is stochastic and reproducible under fixed seed.
+
 ### Ghost Strategy (`loop_path`)
 - Set `env.ghost_policy: loop_path` for deterministic ghost patrol.
 - Additional config:
   - `ghost_loop_matrix`: `0/1` matrix (row-major, top-to-bottom) with `1` for loop cells.
-  - `ghost_loop_direction`: currently `clockwise`.
+  - `ghost_loop_direction`: `clockwise` or `anticlockwise`.
 - Validation rules:
   - matrix shape must match layout size,
   - values must be only `0` or `1`,
@@ -142,10 +165,249 @@ python scripts/eval.py --config configs/default.yaml --model results/train/model
 Expected outputs in `results/eval/`:
 - `eval_metrics.json`
 
+Baseline heuristic policy evaluation (`nearest food`, ghost-avoidance for Manhattan `<= 2`):
+```bash
+python scripts/eval.py --config configs/default.yaml --policy baseline
+```
+Baseline protocol defaults:
+- base seed `42`
+- `200` episodes
+- per-episode seed schedule: `42 + i`
+
+Additional metrics in `eval_metrics.json`:
+- `avg_reward`
+- `avg_episode_length`
+- `policy`
+- `base_seed`
+
+## Results & Artifacts by Algorithm
+
+### Baseline
+**Formula**
+
+$$
+d_{\text{ghost}}(s)=\min_g \left\lVert p_{\text{pac}}(s)-p_g(s)\right\rVert_1
+$$
+
+$$
+a_{\text{escape}}^*(s)=\arg\max_{a\in A_{\text{legal}}}\ \min_g \left\lVert p'_{\text{pac}}(s,a)-p_g(s)\right\rVert_1
+$$
+
+$$
+a_{\text{food}}^*(s)=\text{first action on BFS shortest path to nearest food}
+$$
+
+**GIFs / Visual Rollouts**
+
+Loop-path baseline:
+
+![loop2_baseline](results/important/loop2_baseline.gif)
+
+Markovian baseline:
+
+![markov1_baseline](results/important/markov1_baseline.gif)
+
+Random-policy baseline:
+
+![game1_baseline](results/important/game1_baseline.gif)
+
+**Metrics**
+
+Source: `results/eval/eval_metrics.json` (baseline policy)
+- Episodes: `200` (seed schedule: `42 + i`)
+- Win rate: `0.575`
+- Average reward: `21.535`
+- Average episode length: `69.215`
+- Data representation: **Non-tabular** (rule-based heuristic)
+
+### Q-learning
+**Formula**
+
+$$
+Q(s,a;\mathbf{w})=\mathbf{w}^{\top}\mathbf{f}(s,a)
+$$
+
+$$
+y=
+\begin{cases}
+r, & \text{terminal}\\
+r+\gamma\max_{a'}Q(s',a';\mathbf{w}), & \text{otherwise}
+\end{cases}
+$$
+
+$$
+\delta = y - Q(s,a;\mathbf{w}),\qquad
+w_i \leftarrow w_i + \alpha\,\delta\,f_i(s,a)
+$$
+
+**GIFs / Video / Curves**
+
+Q-learning rollout video:
+
+<video src="results/important/Q_learning.mp4" controls width="720"></video>
+
+Fallback link: [Q_learning.mp4](results/important/Q_learning.mp4)
+
+Q-learning training curve:
+
+![Q_learning_training_curve](results/Q_learning_training_curve.jpg)
+
+**Metrics**
+
+- Quantitative metrics file is not exported as a dedicated JSON artifact in current repo snapshot.
+- Data representation: **Non-tabular** (linear function approximation with feature weights).
+
+### Value Iteration (food-bitmask empirical VI)
+**Formula**
+
+$$
+\hat{P}(s'|s,a)=\frac{N(s,a,s')}{N(s,a)}
+$$
+
+$$
+\hat{R}(s,a,s')=\frac{\sum \text{rewards}(s,a,s')}{N(s,a,s')}
+$$
+
+$$
+Q_k(s,a)=\sum_{s'}\hat{P}(s'|s,a)\left[\hat{R}(s,a,s')+\gamma V_{k-1}(s')\right]
+$$
+
+$$
+V_k(s)=\max_a Q_k(s,a),\qquad
+\pi(s)=\arg\max_a Q_k(s,a)
+$$
+
+$$
+\text{residual}_k=\max_s\left|V_k(s)-V_{k-1}(s)\right|
+$$
+
+**GIFs / Curves**
+
+Fast/high-return VI rollout:
+
+![fast_high_return_VI](results/important/fast_high_return_VI.gif)
+
+Best overall VI rollout:
+
+![best_overall_VI](results/important/best_overall_VI.gif)
+
+VI training reward curve:
+
+![train_bitmask_vi_reward_curve](results/important/train_bitmask_vi_reward_curve.png)
+
+**Metrics**
+
+Training source: `results/important/train_bitmask_vi_metrics.json`
+- Collected episodes: `2500`
+- Discovered states: `136415`
+- Transition samples: `217329`
+- VI iterations: `750`
+- Final Bellman residual: `0.0706064815`
+- Collection mean return: `-183.1356`
+
+Evaluation source: `results/important/eval_bitmask_vi_metrics.json`
+- Episodes: `200` (base seed `42`)
+- Win rate: `0.6`
+- Mean return: `31.715`
+- Mean score: `475.915`
+- Mean steps: `138.785`
+- Best episode return: `719.0` (seed `83`)
+- Data representation: **Tabular** over aggregated food-bitmask observation states.
+
+### SARSA 
+## Algorithm
+
+The canonical update rule:
+
+$$Q(s, a) \leftarrow Q(s, a) + \alpha \left[ r + \gamma \cdot Q(s', a') - Q(s, a) \right]$$
+
+where:
+- $s, a$ — current state and action
+- $r$ — received reward (including reward shaping)
+- $s', a'$ — next state and the **actually selected** next action
+- $\alpha$ — learning rate
+- $\gamma$ — discount factor
+
+At episode termination (`terminated=True`), $Q(s', a') = 0$ is assumed.
+
+### Agent Parameters
+
+| Parameter | Value | Description |
+|---|---|---|
+| `alpha` | `0.1` | Learning rate. Controls how strongly new information overwrites old estimates. |
+| `gamma` | `0.99` | Discount factor. Close to 1 means the agent values long-term reward highly. |
+| `epsilon` | `1.0` | Initial probability of a random action (exploration). Starts at full randomness. |
+| `action_size` | `5` | Number of available actions in the environment. |
+
+### Training Parameters
+
+| Parameter | Value | Description |
+|---|---|---|
+| `episodes` | `3000` | Number of training episodes. |
+| `epsilon_decay` | `0.9995` | Exponential decay multiplier applied to epsilon after each episode. |
+| `epsilon_end` | `0.05` | Lower bound for epsilon. The agent always retains a minimum level of exploration. |
+
+## Action Selection Strategy
+
+The agent uses an **ε-greedy** strategy with a legal action mask:
+
+1. With probability `epsilon` — a random action is chosen from the set of legal actions (`legal_action_ids`).
+2. Otherwise — the action with the highest Q-value among legal actions is chosen; ties are broken randomly.
+
+Epsilon decay is applied after each episode:
+
+```
+epsilon = max(epsilon_end, epsilon * epsilon_decay)
+```
+
+
+**GIFs / Curves**
+
+- Qualitative artifact (gif/mp4): `TBD`
+- Training curve: `TBD`
+
+**Metrics**
+
+- Metrics summary: `TBD`
+- Data representation: **Tabular** (`q_table` dictionary).
+
+### Policy Iteration (Future Placeholder)
+**Formula**
+
+$$
+E(s,a)=\sum_o p_o\left[r_o+\gamma\,c_o\,V(s'_o)\right],\qquad
+c_o=1-\max(\text{terminated\_fraction}_o,\text{truncated\_fraction}_o)
+$$
+
+$$
+V(s)\leftarrow E(s,\pi(s))
+\quad\text{until}\quad
+\max_s|V_{\text{new}}(s)-V_{\text{old}}(s)|<\theta
+$$
+
+$$
+\pi_{\text{new}}(s)=\arg\max_a E(s,a)
+$$
+
+**GIFs / Curves**
+
+- Qualitative artifact (gif/mp4): `TBD`
+- Training curve: `TBD`
+
+**Metrics**
+
+- Metrics summary: `TBD`
+- Data representation: **Tabular** (explicit empirical state-action-outcome model).
+
 ## Manual Play
 Autonomous agent (random baseline) with graphics:
 ```bash
 python scripts/play.py --config configs/default.yaml --render-mode human
+```
+
+Heuristic baseline agent (nearest food + ghost avoidance):
+```bash
+python scripts/play.py --config configs/default.yaml --render-mode human --policy baseline
 ```
 
 Human keyboard mode (Tk):
