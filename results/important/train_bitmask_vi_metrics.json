@@ -1,0 +1,20 @@
+{
+  "collection_episodes": 2500,
+  "collection_mean_return": -183.1356,
+  "collection_mean_score": 211.2524,
+  "collection_mean_steps": 86.9316,
+  "danger_distance": 2,
+  "discovered_states": 136415,
+  "epsilon_random": 0.35,
+  "final_residual": 0.07060648153128568,
+  "gamma": 0.99,
+  "important_training_reward_plot": "results\\important\\train_bitmask_vi_reward_curve.png",
+  "iterations": 750,
+  "model_path": "results\\train_food_bitmask_vi\\model.pkl",
+  "policy_states": 136414,
+  "state_action_pairs": 148751,
+  "tolerance": 1e-06,
+  "total_seconds": 516.5997444999521,
+  "training_plot": "results\\train_food_bitmask_vi\\training_curves.png",
+  "transition_samples": 217329
+}
