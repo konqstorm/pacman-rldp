@@ -207,7 +207,7 @@ Markovian baseline:
 
 ![markov1_baseline](results/important/markov1_baseline.gif)
 
-Random-policy baseline (`game1 == random policy`):
+Random-policy baseline:
 
 ![game1_baseline](results/important/game1_baseline.gif)
 
