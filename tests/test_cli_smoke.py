@@ -71,3 +71,19 @@ def test_train_eval_and_play_smoke(tmp_path: Path) -> None:
             "--no-gif",
         ]
     )
+
+    run_command(
+        [
+            sys.executable,
+            "scripts/play.py",
+            "--config",
+            "configs/default.yaml",
+            "--render-mode",
+            "ansi",
+            "--episodes",
+            "1",
+            "--policy",
+            "baseline",
+            "--no-gif",
+        ]
+    )

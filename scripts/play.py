@@ -20,7 +20,12 @@ def _bootstrap_src_path() -> None:
 
 _bootstrap_src_path()
 
-from pacman_rldp.agents import KeyboardPolicy, RandomPolicy
+from pacman_rldp.agents import (
+    BaselineNearestFoodAvoidGhostPolicy,
+    KeyboardPolicy,
+    Policy,
+    RandomPolicy,
+)
 from pacman_rldp.env import PacmanEnv, build_env_config
 from pacman_rldp.third_party.bk import graphicsUtils
 from pacman_rldp.visuals import run_keyboard_game
@@ -32,6 +37,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Play Pacman in manual or random-agent mode.")
     parser.add_argument("--config", default="configs/default.yaml", help="Path to YAML config.")
     parser.add_argument("--manual", action="store_true", help="Enable manual control mode.")
+    parser.add_argument(
+        "--policy",
+        choices=["random", "baseline"],
+        default="random",
+        help="Pacman policy for non-manual mode.",
+    )
     parser.add_argument("--render-mode", choices=["human", "ansi"], default="human")
     parser.add_argument("--episodes", type=int, default=1, help="Number of episodes to run.")
     parser.add_argument("--seed", type=int, default=None, help="Override random seed.")
@@ -86,7 +97,7 @@ def save_gif(frames: list[Image.Image], output_path: Path, frame_time: float) ->
 
 def run_env_loop(
     env: PacmanEnv,
-    policy: RandomPolicy | KeyboardPolicy,
+    policy: Policy,
     episodes: int,
     seed: int,
     save_human_gif_frames: bool,
@@ -148,6 +159,9 @@ def main() -> None:
             render_mode="human",
             zoom=env_cfg.zoom,
             frame_time=env_cfg.frame_time,
+            ghost_policy=env_cfg.ghost_policy,
+            ghost_loop_matrix=env_cfg.ghost_loop_matrix,
+            ghost_loop_direction=env_cfg.ghost_loop_direction,
         )
         print(f"Manual game finished. Final score: {final_score:.2f}")
         if save_gif_enabled:
@@ -155,7 +169,12 @@ def main() -> None:
         return
 
     env = PacmanEnv(config=env_cfg, render_mode=args.render_mode)
-    policy = KeyboardPolicy() if args.manual else RandomPolicy(seed=env_cfg.seed)
+    if args.manual:
+        policy: Policy = KeyboardPolicy()
+    elif args.policy == "baseline":
+        policy = BaselineNearestFoodAvoidGhostPolicy()
+    else:
+        policy = RandomPolicy(seed=env_cfg.seed)
     gif_frames = run_env_loop(
         env=env,
         policy=policy,
