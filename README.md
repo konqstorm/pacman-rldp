@@ -315,11 +315,8 @@ Use `--render` flag only if you want to see the agent in action.
 **Approximate Q-learning metrics**
 
 **Training**
-- Collected episodes: `1000`
+- Collected episodes: `10000`
 - Feature weights: `9` (linear function approximation)
-- Transition samples: `100000`
-- Weight updates: `100000`
-- Final average TD error: `0.021`
 - Collection mean total reward: `-110.7`
 
 **Evaluation** 
