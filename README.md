@@ -45,6 +45,22 @@ Bitmask encoding rule (deterministic):
 - only non-wall cells are encoded,
 - canonical order is row-major by map rows top-to-bottom, then left-to-right within each row.
 
+### Observation State Space (Approximate)
+Approximate orders below use current default assumptions: `smallClassic`, width `20`, height `7`, walkable cells `64`, ghosts `2`, chunk config `4x2`, max scared timer `40`, max steps `500`.
+
+| Observation | Approximate State Space | Formula (order-level) |
+|---|---:|---|
+| `raw` | `~1.63e31` | `N_pac * N_ghost^G * 2^N_food * 2^N_caps * (T+1)^G * (S+1)` |
+| `chunked_food` | `~3.03e23` | `N_pac * N_ghost^G * (T+1)^G * (S+1) * 2^C * C * 2^(chunk_w*chunk_h) * 2^(chunk_w*chunk_h)` |
+| `food_bitmask` | `~4.07e30` | `N_pac * N_ghost^G * 2^N_food * (T+1)^G * (S+1)` |
+| `bitmask_distance_buckets` | `~2.61e34` | `food_bitmask_space * N_food_bucket * N_ghost_bucket * N_food_dir * N_ghost_dir` |
+
+Where:
+- `N_pac = 64`, `N_ghost = 64`, `G = 2`, `N_food = 64`, `N_caps = 2`,
+- `T = 40`, `S = 500`, `C = ceil(20/4)*ceil(7/2)=20`,
+- `N_food_bucket = 16`, `N_ghost_bucket = 16`, `N_food_dir = 5`, `N_ghost_dir = 5`.
+- These are approximate upper-order estimates and change with layout/config.
+
 ### Action Space
 - `action_space = Discrete(5)`
 - Mapping:
@@ -163,6 +179,91 @@ Additional metrics in `eval_metrics.json`:
 - `avg_episode_length`
 - `policy`
 - `base_seed`
+
+## Results & Artifacts by Algorithm
+
+### Baseline
+- Loop-path demo: `results/important/loop2_baseline.gif`
+- Markovian demo: `results/important/markov1_baseline.gif`
+- Random-policy game demo (`game1 == random policy`): `results/important/game1_baseline.gif`
+
+### Q-learning
+- Rollout video: `results/important/Q_learning.mp4`
+- Training curve: `results/Q_learning_training_curve.jpg`
+
+### Value Iteration (food-bitmask empirical VI)
+- Fast/high-return rollout: `results/important/fast_high_return_VI.gif`
+- Best overall rollout (requested `best_overall.gif`, repository file is): `results/important/best_overall_VI.gif`
+- Training reward curve: `results/important/train_bitmask_vi_reward_curve.png`
+
+### SARSA (Future Placeholder)
+- Qualitative artifact (gif/mp4): `TBD`
+- Training curve: `TBD`
+- Metrics summary: `TBD`
+
+### Policy Iteration (Future Placeholder)
+- Qualitative artifact (gif/mp4): `TBD`
+- Training curve: `TBD`
+- Metrics summary: `TBD`
+
+## Mathematical Formulas Used in Code
+
+### Baseline Heuristic (`src/pacman_rldp/agents/baseline.py`)
+- Danger check with Manhattan distance:
+  - `d_ghost(s) = min_g ||p_pac - p_g||_1`
+  - Escape mode if `d_ghost(s) <= d_threshold`
+- Escape action selection:
+  - `a* = argmax_{a in A_legal} min_g ||p_pac'(a) - p_g||_1`
+- Food chasing (when safe):
+  - choose first action on BFS shortest path to nearest food.
+
+### Q-learning (`scripts/q_learning_agent.py`)
+- Linear approximation:
+  - `Q(s,a) = w^T f(s,a)`
+- TD target:
+  - terminal: `y = r`
+  - non-terminal: `y = r + gamma * max_{a'} Q(s',a')`
+- TD error:
+  - `delta = y - Q(s,a)`
+- Weight update:
+  - `w_i <- w_i + alpha * delta * f_i(s,a)`
+- Action selection:
+  - epsilon-greedy over legal actions.
+
+### Value Iteration (`src/pacman_rldp/algorithms/food_bitmask_value_iteration.py`)
+- Empirical transition probability:
+  - `P_hat(s'|s,a) = N(s,a,s') / N(s,a)`
+- Empirical mean reward per transition:
+  - `R_hat(s,a,s') = SumRewards(s,a,s') / N(s,a,s')`
+- Bellman backup on empirical MDP:
+  - `Q_k(s,a) = sum_{s'} P_hat(s'|s,a) * [R_hat(s,a,s') + gamma * V_{k-1}(s')]`
+  - `V_k(s) = max_a Q_k(s,a)`
+  - `pi(s) = argmax_a Q_k(s,a)` (tie-break by action id in code)
+- Convergence criterion:
+  - `residual_k = max_s |V_k(s) - V_{k-1}(s)|`
+  - stop if `residual_k <= tolerance`.
+
+### SARSA (`src/pacman_rldp/agents/sarsa.py`)
+- On-policy TD update:
+  - `Q(s,a) <- Q(s,a) + alpha * [r + gamma * Q(s',a') - Q(s,a)]`
+
+### Policy Iteration (`src/pacman_rldp/algorithms/policy_iteration/policy_iteration_obs.py`)
+- Expected return for action from empirical outcomes:
+  - `E(s,a) = sum_o p_o * [r_o + gamma * c_o * V(s_o')]`
+  - with continuation factor `c_o = 1 - max(terminated_fraction_o, truncated_fraction_o)`
+- Policy evaluation (iterative):
+  - `V(s) <- E(s, pi(s))` until `max_s |V_new(s)-V_old(s)| < theta`.
+- Policy improvement:
+  - `pi_new(s) = argmax_a E(s,a)`.
+
+## Tabular vs Non-Tabular Methods
+| Method | Implementation | Data Representation |
+|---|---|---|
+| Baseline heuristic | `src/pacman_rldp/agents/baseline.py` | Non-tabular (rule-based) |
+| Q-learning | `scripts/q_learning_agent.py` | Non-tabular (linear function approximation, weights over features) |
+| Value Iteration (food-bitmask empirical) | `src/pacman_rldp/algorithms/food_bitmask_value_iteration.py` | Tabular over aggregated observation states (`value/policy/q` dictionaries) |
+| SARSA | `src/pacman_rldp/agents/sarsa.py` | Tabular (`q_table` dictionary) |
+| Policy Iteration (obs MDP) | `src/pacman_rldp/algorithms/policy_iteration/policy_iteration_obs.py` | Tabular (explicit empirical state-action-outcome model) |
 
 ## Manual Play
 Autonomous agent (random baseline) with graphics:
