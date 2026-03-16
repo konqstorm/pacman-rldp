@@ -59,6 +59,7 @@ class ObservationName(str, Enum):
     CHUNKED_FOOD = "chunked_food"
     FOOD_BITMASK = "food_bitmask"
     BITMASK_DISTANCE_BUCKETS = "bitmask_distance_buckets"
+    SIMPLE_DISTANCE_BUCKETS = "simple_distance_buckets"
 
 
 class NonNegativeIntSpace(gym.Space[int]):
@@ -573,6 +574,98 @@ def _build_chunked_food_observation(
     return observation
 
 
+def _build_simple_distance_space(context: ObservationContext) -> gym.Space:
+    """Build observation space for minimal distance/direction features."""
+    max_dist = int(context.width + context.height)
+    max_bucket = math.ceil(max_dist / context.distance_bucket_size)
+    return spaces.Dict(
+        {
+            "nearest_food_bucket": spaces.Box(
+                low=-1,
+                high=max_bucket,
+                shape=(1,),
+                dtype=np.int32,
+            ),
+            "nearest_ghost_bucket": spaces.Box(
+                low=-1,
+                high=max_bucket,
+                shape=(1,),
+                dtype=np.int32,
+            ),
+            "nearest_food_direction": spaces.Box(
+                low=0,
+                high=4,
+                shape=(1,),
+                dtype=np.int32,
+            ),
+            "nearest_ghost_direction": spaces.Box(
+                low=0,
+                high=4,
+                shape=(1,),
+                dtype=np.int32,
+            ),
+        }
+    )
+
+
+def _build_simple_distance_observation(
+    context: ObservationContext,
+    state: runtime_pacman.GameState,
+    step_count: int,
+) -> dict[str, Any]:
+    """Build minimal observation with nearest food/ghost distance buckets and directions."""
+    del step_count
+    pacman_position = state.getPacmanPosition()
+    food_positions = state.getFood().asList()
+    ghost_positions = [
+        ghost_state.getPosition()
+        for ghost_state in state.getGhostStates()
+        if ghost_state.getPosition() is not None
+    ]
+
+    nearest_food = min(
+        food_positions,
+        key=lambda pos: (abs(pos[0] - pacman_position[0]) + abs(pos[1] - pacman_position[1]), pos),
+        default=None,
+    )
+    nearest_ghost = min(
+        ghost_positions,
+        key=lambda pos: (abs(pos[0] - pacman_position[0]) + abs(pos[1] - pacman_position[1]), pos),
+        default=None,
+    )
+
+    nearest_food_distance = None
+    if nearest_food is not None:
+        nearest_food_distance = int(
+            abs(nearest_food[0] - pacman_position[0]) + abs(nearest_food[1] - pacman_position[1])
+        )
+
+    nearest_ghost_distance = None
+    if nearest_ghost is not None:
+        nearest_ghost_distance = int(
+            abs(nearest_ghost[0] - pacman_position[0]) + abs(nearest_ghost[1] - pacman_position[1])
+        )
+
+    return {
+        "nearest_food_bucket": np.array(
+            [_bucket_distance(nearest_food_distance, context.distance_bucket_size)],
+            dtype=np.int32,
+        ),
+        "nearest_ghost_bucket": np.array(
+            [_bucket_distance(nearest_ghost_distance, context.distance_bucket_size)],
+            dtype=np.int32,
+        ),
+        "nearest_food_direction": np.array(
+            [0 if nearest_food is None else _direction_to_target(pacman_position, nearest_food)],
+            dtype=np.int32,
+        ),
+        "nearest_ghost_direction": np.array(
+            [0 if nearest_ghost is None else _direction_to_target(pacman_position, nearest_ghost)],
+            dtype=np.int32,
+        ),
+    }
+
+
 _OBSERVATION_REGISTRY: dict[str, ObservationSpec] = {
     ObservationName.RAW.value: ObservationSpec(
         name=ObservationName.RAW.value,
@@ -593,6 +686,11 @@ _OBSERVATION_REGISTRY: dict[str, ObservationSpec] = {
         name=ObservationName.BITMASK_DISTANCE_BUCKETS.value,
         build_space=_build_bitmask_distance_buckets_space,
         build_observation=_build_bitmask_distance_bucket_observation,
+    ),
+    ObservationName.SIMPLE_DISTANCE_BUCKETS.value: ObservationSpec(
+        name=ObservationName.SIMPLE_DISTANCE_BUCKETS.value,
+        build_space=_build_simple_distance_space,
+        build_observation=_build_simple_distance_observation,
     ),
 }
 
