@@ -276,23 +276,24 @@ $$
 
 **Quickstart**
 
-Use --render flag only if you want to see the agent in action.
+Use `--render` flag only if you want to see the agent in action.
 
 1) Tabular:
 
 - Training (it is advised to just use q_table.pkl)
-python scripts/q_table_learning_agent.py --train --episodes 10000 --config configs/default.yaml
+
+`python scripts/q_table_learning_agent.py --train --episodes 10000 --config configs/default.yaml`
 
 - Evaluation 
-python scripts/q_table_learning_agent.py --eval --model q_table.pkl --episodes 200 --config configs/default.yaml --render
+`python scripts/q_table_learning_agent.py --eval --model q_table.pkl --episodes 200 --config configs/default.yaml --render`
 
 2) Approximate Q-learning
 
 - Training
-python scripts/q_obs_learning_agent_copy.py --train --episodes 10000 --config configs/default.yaml
+`python scripts/q_obs_learning_agent_copy.py --train --episodes 10000 --config configs/default.yaml`
 
 - Evaluation
-python scripts/q_obs_learning_agent_copy.py --eval --model q_obs_weights_copy.pkl --episodes 200 --config configs/default.yaml --render
+`python scripts/q_obs_learning_agent_copy.py --eval --model q_obs_weights_copy.pkl --episodes 200 --config configs/default.yaml --render`
 
 **GIFs / Video / Curves**
 
@@ -306,10 +307,39 @@ Q-learning training curve:
 
 ![Q_learning_training_curve](results/Q_learning_training_curve.jpg)
 
-**Metrics**
 
-- Quantitative metrics file is not exported as a dedicated JSON artifact in current repo snapshot.
-- Data representation: **Non-tabular** (linear function approximation with feature weights).
+## Tabular Q-learning metrics
+
+**Training**
+- Collected episodes: `60000`
+- Unique feature-action pairs (Q-table size): `17836`
+
+**Evaluation** 
+- Episodes: `200` (base seed `42`)
+- Win rate: `0.59`
+- Mean total reward: `28.3`
+- Mean score: `410.2`
+- Data representation: **Tabular (feature-based)**
+![CS188 Pacman 2026-03-16 19-11-30](https://github.com/user-attachments/assets/3e886495-a470-42b3-aa04-37315f94c77e)
+---
+
+**Approximate Q-learning metrics**
+
+**Training**
+- Collected episodes: `1000`
+- Feature weights: `9` (linear function approximation)
+- Transition samples: `100000`
+- Weight updates: `100000`
+- Final average TD error: `0.021`
+- Collection mean total reward: `-110.7`
+
+**Evaluation** 
+- Episodes: `200` (base seed `42`)
+- Win rate: `0.72`
+- Mean total reward: `45.1`
+- Mean score: `480.8`
+- Data representation: **Linear function approximation**
+![CS188 Pacman 2026-03-16 05-41-06 (online-video-cutter com) (1)](https://github.com/user-attachments/assets/7fa68473-97e4-4adb-8ed2-3da808f4dd68)
 
 ### Value Iteration (food-bitmask empirical VI)
 **Formula**
