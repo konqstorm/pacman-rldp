@@ -227,15 +227,15 @@ Here we have two algorithms -- /scripts/q_obs_learning_agent_copy.py (actor-crit
 As large amount of features mentioned above haven't helped with the learning of both these agents (in case of approximate it was way too noisy, for tabular it exploded gradients, after using clipping it was still noisy and way too inefficient), I've decided to use more informative features for both variants.
 
 **Features**
-hit-wall — Whether Pacman’s next move hits a wall (0 or 1)
-scared — At least one ghost is in scared mode (0 or 1)
-eats-food — Pacman eats food on the next move (0 or 1)
-closest-food — Distance to the nearest food (integer or -1 if unreachable)
-food-nearby — Number of food pellets in a 3x3 area around the next position (integer)
-ghost-distance — Distance to the nearest ghost (integer or -1 if none)
-danger — A ghost is within distance ≤1 (0 or 1)
-capsule-distance — Distance to the nearest capsule (integer or -1 if none)
-stop — Action is Stop (0 or 1)
+- hit-wall — Whether Pacman’s next move hits a wall (0 or 1)
+- scared — At least one ghost is in scared mode (0 or 1)
+- eats-food — Pacman eats food on the next move (0 or 1)
+- closest-food — Distance to the nearest food (integer or -1 if unreachable)
+- food-nearby — Number of food pellets in a 3x3 area around the next position (integer)
+- ghost-distance — Distance to the nearest ghost (integer or -1 if none)
+- danger — A ghost is within distance ≤1 (0 or 1)
+- capsule-distance — Distance to the nearest capsule (integer or -1 if none)
+- stop — Action is Stop (0 or 1)
 
 
 **Policy**
@@ -253,8 +253,6 @@ Computes Q-value as a weighted sum of features: $Q(s, a) = w^\\top f(s, a)$.
 Policy: For a given state, extracts features for all legal actions, computes Q-values using current weights, and selects the action with the highest Q-value (breaks ties randomly).
 
 Exploration: With probability epsilon, chooses a random legal action.
-
-
 
 
 **Formula**
@@ -275,6 +273,26 @@ $$
 \delta = y - Q(s,a;\mathbf{w}),\qquad
 w_i \leftarrow w_i + \alpha\,\delta\,f_i(s,a)
 $$
+
+**Quickstart**
+
+Use --render flag only if you want to see the agent in action.
+
+1) Tabular:
+
+- Training (it is advised to just use q_table.pkl)
+python scripts/q_table_learning_agent.py --train --episodes 10000 --config configs/default.yaml
+
+- Evaluation 
+python scripts/q_table_learning_agent.py --eval --model q_table.pkl --episodes 200 --config configs/default.yaml --render
+
+2) Approximate Q-learning
+
+- Training
+python scripts/q_obs_learning_agent_copy.py --train --episodes 10000 --config configs/default.yaml
+
+- Evaluation
+python scripts/q_obs_learning_agent_copy.py --eval --model q_obs_weights_copy.pkl --episodes 200 --config configs/default.yaml --render
 
 **GIFs / Video / Curves**
 
