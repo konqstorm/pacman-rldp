@@ -77,21 +77,6 @@ Bitmask encoding rule (deterministic):
 - only non-wall cells are encoded,
 - canonical order is row-major by map rows top-to-bottom, then left-to-right within each row.
 
-### Observation State Space (Approximate)
-Approximate orders below use current default assumptions: `smallClassic`, width `20`, height `7`, walkable cells `64`, ghosts `2`, chunk config `4x2`, max scared timer `40`, max steps `500`.
-
-| Observation | Approximate State Space | Formula (order-level) |
-|---|---:|---|
-| `raw` | `~1.63e31` | `N_pac * N_ghost^G * 2^N_food * 2^N_caps * (T+1)^G * (S+1)` |
-| `chunked_food` | `~3.03e23` | `N_pac * N_ghost^G * (T+1)^G * (S+1) * 2^C * C * 2^(chunk_w*chunk_h) * 2^(chunk_w*chunk_h)` |
-| `food_bitmask` | `~4.07e30` | `N_pac * N_ghost^G * 2^N_food * (T+1)^G * (S+1)` |
-| `bitmask_distance_buckets` | `~2.61e34` | `food_bitmask_space * N_food_bucket * N_ghost_bucket * N_food_dir * N_ghost_dir` |
-
-Where:
-- `N_pac = 64`, `N_ghost = 64`, `G = 2`, `N_food = 64`, `N_caps = 2`,
-- `T = 40`, `S = 500`, `C = ceil(20/4)*ceil(7/2)=20`,
-- `N_food_bucket = 16`, `N_ghost_bucket = 16`, `N_food_dir = 5`, `N_ghost_dir = 5`.
-- These are approximate upper-order estimates and change with layout/config.
 
 ### Action Space
 - `action_space = Discrete(5)`
@@ -496,5 +481,3 @@ These provide model-first abstractions (state encoding, legal actions, transitio
 - `scripts/`: train/eval/play entrypoints.
 - `configs/`: reproducible experiment configuration.
 
-## Scope Note
-This branch implements the team-role deliverables: environment + visualization + manual mode + DP scaffold. Final learning-agent performance claims and baseline outperformance are expected in subsequent team iterations.
